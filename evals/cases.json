@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "notes": "PatentHunter Golden Dataset — P1 dryrun fixture (4 patents) に対する期待値. P2 で実 API に切り替えた時に同じスキーマでそのまま使える.",
+  "cases": [
+    {
+      "patent_id": "8234811",
+      "title": "Self-watering planter insert",
+      "expected_score_range": [7, 10],
+      "expected_status": "adopted",
+      "notes": "Gipp 原典 Hit #1. BOM $1.80・Amazon $14-22・wick 故障率 ~2% vs 現行 31%. 両モデルで採用想定."
+    },
+    {
+      "patent_id": "7918184",
+      "title": "Collapsible pet water bowl with one-hand lock",
+      "expected_score_range": [7, 10],
+      "expected_status": "adopted",
+      "notes": "Gipp 原典 Hit #2. 可動部 0・特許設計の故障率 ~2% vs 現行 31%. 両モデルで採用想定."
+    },
+    {
+      "patent_id": "7178762",
+      "title": "Adjustable cable management clip with ratchet jaws",
+      "expected_score_range": [6, 9],
+      "expected_status": "adopted",
+      "notes": "Gipp 原典 Hit #3. 2-12mm 可変ラチェット. 境界値帯・採用されるが consensus は中程度."
+    },
+    {
+      "patent_id": "9000000",
+      "title": "Disposable single-use kitchen sponge",
+      "expected_score_range": [1, 5],
+      "expected_status": "reject",
+      "notes": "ネガティブサンプル. 商業性低・両モデルで reject される想定. 検出失敗 = 偽陽性検出能力の劣化."
+    }
+  ]
+}
