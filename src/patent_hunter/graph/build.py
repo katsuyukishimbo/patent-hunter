@@ -86,6 +86,7 @@ def dryrun_runtime(
     score_threshold: int = 7,
     max_per_category: int = 10,
     top_n: int = 10,
+    max_cost_usd: float = 10.0,
 ) -> GraphRuntime:
     """Build a runtime from the existing ``scripts/dryrun.py`` fixtures."""
 
@@ -100,6 +101,7 @@ def dryrun_runtime(
         score_threshold=score_threshold,
         max_per_category=max_per_category,
         top_n=top_n,
+        max_cost_usd=max_cost_usd,
         fetched_patents=list(FIXTURE_PATENTS),
         sonnet_client=_fake_sonnet_runner,
         codex_runner=_fake_codex_runner,

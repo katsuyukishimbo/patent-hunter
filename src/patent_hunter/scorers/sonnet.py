@@ -16,17 +16,22 @@ import json
 import logging
 import os
 import shlex
+import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, List, Optional
 
 from .json_extract import extract_json_array
 from .prompts import SYSTEM_PROMPT, build_user_payload
 from ..models import Patent, ScoreResult
+from ..observability import emit
 
 logger = logging.getLogger(__name__)
 
 CLAUDE_SUBPROCESS_CWD = "/tmp"
 CLAUDE_TIMEOUT_SECONDS = 180.0
+MAX_SCORE_ATTEMPTS = 3
+SCORE_RETRY_BASE_DELAY_SECONDS = 1.0
+SCORE_RETRY_FACTOR = 2.0
 
 RunnerOutput = str | tuple[str, str, int]
 Runner = Callable[[List[str], float], Awaitable[RunnerOutput]]
@@ -194,6 +199,80 @@ async def _invoke_runner(
     return out, "", 0
 
 
+def _retry_delay(attempt: int) -> float:
+    return SCORE_RETRY_BASE_DELAY_SECONDS * (SCORE_RETRY_FACTOR ** (attempt - 1))
+
+
+async def _invoke_with_retries(
+    runner: Runner | None,
+    argv: List[str],
+    timeout: float,
+) -> tuple[str, str, int]:
+    last_error: BaseException | None = None
+    for attempt in range(1, MAX_SCORE_ATTEMPTS + 1):
+        try:
+            stdout, stderr, returncode = await _invoke_runner(runner, argv, timeout)
+        except FileNotFoundError:
+            raise
+        except asyncio.TimeoutError as exc:
+            last_error = exc
+            reason = "timeout"
+        except RuntimeError as exc:
+            last_error = exc
+            reason = str(exc)[:500]
+        else:
+            if returncode == 0:
+                return stdout, stderr, returncode
+            reason = f"returncode={returncode}"
+            last_error = RuntimeError(reason)
+            if attempt >= MAX_SCORE_ATTEMPTS:
+                return stdout, stderr, returncode
+
+        if attempt >= MAX_SCORE_ATTEMPTS:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(reason)
+
+        delay = _retry_delay(attempt)
+        emit(
+            "score_retry",
+            level="warn",
+            model="sonnet",
+            attempt=attempt + 1,
+            reason=reason,
+        )
+        logger.warning(
+            "Claude CLI transient failure (%s), retrying attempt %d/%d in %.1fs",
+            reason,
+            attempt + 1,
+            MAX_SCORE_ATTEMPTS,
+            delay,
+        )
+        await asyncio.sleep(delay)
+
+    raise RuntimeError("unreachable retry state")
+
+
+def _emit_score_done(
+    *,
+    results: List[ScoreResult],
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float,
+    started: float,
+) -> None:
+    emit(
+        "score_done",
+        model="sonnet",
+        results=len(results),
+        errors=sum(1 for r in results if r.error),
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        cost_usd=round(cost_usd, 4),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+
+
 async def score_batch(
     patents: List[Patent],
     *,
@@ -210,7 +289,16 @@ async def score_batch(
     than a direct API client. ``model`` is accepted for the historical signature but
     ignored because Claude Code owns model selection.
     """
+    started = time.perf_counter()
+    emit("score_started", model="sonnet", batch_size=len(patents))
     if not patents:
+        _emit_score_done(
+            results=[],
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            started=started,
+        )
         return SonnetScoreBatch(results=[], input_tokens=0, output_tokens=0, cost_usd=0.0)
 
     if model:
@@ -224,10 +312,20 @@ async def score_batch(
 
     logger.info("Claude CLI: scoring batch of %d patents", len(patents))
     try:
-        stdout, stderr, returncode = await _invoke_runner(effective_runner, argv, timeout)
+        stdout, stderr, returncode = await _invoke_with_retries(
+            effective_runner, argv, timeout
+        )
     except (asyncio.TimeoutError, RuntimeError, FileNotFoundError) as exc:
         logger.warning("Claude CLI invocation failed: %s", exc)
-        return _error_batch(patents, error=f"invocation_error: {exc}")
+        out = _error_batch(patents, error=f"invocation_error: {exc}")
+        _emit_score_done(
+            results=out.results,
+            input_tokens=out.input_tokens,
+            output_tokens=out.output_tokens,
+            cost_usd=out.cost_usd,
+            started=started,
+        )
+        return out
 
     try:
         cli_result = _decode_cli_response(stdout)
@@ -240,7 +338,15 @@ async def score_batch(
                 f"{stderr_tail or str(exc)}"
             )
         logger.warning("Claude CLI returned invalid wrapper JSON: %s", message)
-        return _error_batch(patents, error=message, raw=stdout)
+        out = _error_batch(patents, error=message, raw=stdout)
+        _emit_score_done(
+            results=out.results,
+            input_tokens=out.input_tokens,
+            output_tokens=out.output_tokens,
+            cost_usd=out.cost_usd,
+            started=started,
+        )
+        return out
 
     if returncode != 0 or cli_result.is_error:
         detail = cli_result.result_text.strip() or stderr.strip() or "unknown error"
@@ -250,7 +356,7 @@ async def score_batch(
             else "claude_cli_error"
         )
         logger.warning("Claude CLI reported failure: %s: %s", prefix, detail)
-        return _error_batch(
+        out = _error_batch(
             patents,
             error=f"{prefix}: {detail}",
             raw=cli_result.result_text,
@@ -258,6 +364,14 @@ async def score_batch(
             output_tokens=cli_result.output_tokens,
             cost_usd=cli_result.cost_usd,
         )
+        _emit_score_done(
+            results=out.results,
+            input_tokens=out.input_tokens,
+            output_tokens=out.output_tokens,
+            cost_usd=out.cost_usd,
+            started=started,
+        )
+        return out
 
     by_id = {p.patent_id: p for p in patents}
     results: List[ScoreResult] = []
@@ -265,7 +379,7 @@ async def score_batch(
         items = extract_json_array(cli_result.result_text)
     except ValueError as exc:
         logger.warning("Claude CLI result field was non-JSON: %s", exc)
-        return _error_batch(
+        out = _error_batch(
             patents,
             error=f"json_parse_error: {exc}",
             raw=cli_result.result_text,
@@ -273,6 +387,14 @@ async def score_batch(
             output_tokens=cli_result.output_tokens,
             cost_usd=cli_result.cost_usd,
         )
+        _emit_score_done(
+            results=out.results,
+            input_tokens=out.input_tokens,
+            output_tokens=out.output_tokens,
+            cost_usd=out.cost_usd,
+            started=started,
+        )
+        return out
 
     seen: set[str] = set()
     for obj in items:
@@ -295,9 +417,17 @@ async def score_batch(
                 )
             )
 
-    return SonnetScoreBatch(
+    out = SonnetScoreBatch(
         results=results,
         input_tokens=cli_result.input_tokens,
         output_tokens=cli_result.output_tokens,
         cost_usd=cli_result.cost_usd,
     )
+    _emit_score_done(
+        results=out.results,
+        input_tokens=out.input_tokens,
+        output_tokens=out.output_tokens,
+        cost_usd=out.cost_usd,
+        started=started,
+    )
+    return out

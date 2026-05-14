@@ -33,6 +33,18 @@ class _TooManyRequests(_GoogleAPIError):
     pass
 
 
+class _ResourceExhausted(_GoogleAPIError):
+    pass
+
+
+class _DeadlineExceeded(_GoogleAPIError):
+    pass
+
+
+class _ServiceUnavailable(_GoogleAPIError):
+    pass
+
+
 class _GoogleAuthError(Exception):
     pass
 
@@ -57,6 +69,9 @@ def fake_google_modules(monkeypatch: pytest.MonkeyPatch):
 
     api_exceptions.GoogleAPIError = _GoogleAPIError
     api_exceptions.TooManyRequests = _TooManyRequests
+    api_exceptions.ResourceExhausted = _ResourceExhausted
+    api_exceptions.DeadlineExceeded = _DeadlineExceeded
+    api_exceptions.ServiceUnavailable = _ServiceUnavailable
     auth_exceptions.GoogleAuthError = _GoogleAuthError
     auth_exceptions.DefaultCredentialsError = _DefaultCredentialsError
 
@@ -202,3 +217,28 @@ def test_quota_failure_is_wrapped(fake_google_modules):
         excinfo.value.__cause__,
         fake_google_modules.api_exceptions.TooManyRequests,
     )
+
+
+def test_retryable_bigquery_error_retries_then_succeeds(
+    fake_google_modules, monkeypatch: pytest.MonkeyPatch
+):
+    async def no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(fetcher.asyncio, "sleep", no_sleep)
+
+    query_job = Mock()
+    query_job.result.side_effect = [
+        fake_google_modules.api_exceptions.ResourceExhausted("quota busy"),
+        fake_google_modules.api_exceptions.ResourceExhausted("quota busy"),
+        [_row()],
+    ]
+    client = Mock()
+    client.query.return_value = query_job
+
+    with patch("google.cloud.bigquery.Client", return_value=client):
+        out = fetcher.fetch_patents(IsoWeek(2026, 19), fetcher.FetchConfig())
+
+    assert len(out) == 1
+    assert client.query.call_count == 3
+    assert query_job.result.call_count == 3

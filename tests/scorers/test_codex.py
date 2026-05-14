@@ -30,7 +30,12 @@ def test_codex_parses_subprocess_stdout():
     assert out.cost_usd_estimate > 0
 
 
-def test_codex_handles_invocation_failure():
+def test_codex_handles_invocation_failure(monkeypatch):
+    async def no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(scorer_codex.asyncio, "sleep", no_sleep)
+
     async def fake_runner(argv, timeout):
         raise RuntimeError("codex exec failed (rc=2): boom")
 
@@ -39,6 +44,30 @@ def test_codex_handles_invocation_failure():
     )
     assert out.results[0].error and "invocation_error" in out.results[0].error
     assert out.cost_usd_estimate == 0
+
+
+def test_codex_retries_nonzero_exit_then_succeeds(monkeypatch):
+    async def no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(scorer_codex.asyncio, "sleep", no_sleep)
+    calls = 0
+    payload = json.dumps([{"patent_id": "8234811", "score": 8}])
+
+    async def fake_runner(argv, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "", "temporary failure", 1
+        return payload
+
+    out = asyncio.run(
+        scorer_codex.score_batch([make_patent(pid="8234811")], runner=fake_runner)
+    )
+
+    assert calls == 2
+    assert out.results[0].error is None
+    assert out.results[0].score == 8
 
 
 def test_codex_handles_non_json_output():

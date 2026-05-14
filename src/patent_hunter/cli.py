@@ -5,6 +5,7 @@ Usage:
                                 [--max-per-category 25]
                                 [--vintage-years 12]
                                 [--score-threshold 7]
+                                [--max-cost 10.0]
                                 [--out-dir out]
 """
 
@@ -19,7 +20,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .runner import RunConfig, run
+from .runner import AllScoringFailedError, CostBudgetExceededError, RunConfig, run
 from .week import IsoWeek, parse_iso_week, previous_iso_week
 
 
@@ -45,6 +46,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--score-threshold",
         type=int,
         default=int(os.environ.get("SCORE_THRESHOLD", "7")),
+    )
+    run_p.add_argument(
+        "--max-cost",
+        type=float,
+        default=float(os.environ.get("MAX_COST_USD", "10.0")),
+        help="Maximum estimated spend in USD before stopping after a batch.",
     )
     run_p.add_argument(
         "--out-dir",
@@ -91,8 +98,26 @@ def main(argv: list[str] | None = None) -> int:
         max_per_category=args.max_per_category,
         vintage_years=args.vintage_years,
         top_n=args.top_n,
+        max_cost_usd=args.max_cost,
     )
-    paths = run(cfg)
+    try:
+        paths = run(cfg)
+    except CostBudgetExceededError as exc:
+        paths = exc.output_paths
+        print(f"ERROR: {exc}", file=sys.stderr)
+        if paths:
+            print(f"[patent-hunter] report : {paths['report']}")
+            print(f"[patent-hunter] scores : {paths['scores']}")
+            print(f"[patent-hunter] log    : {paths['log']}")
+        return 1
+    except AllScoringFailedError as exc:
+        paths = exc.output_paths
+        print(f"ERROR: {exc}", file=sys.stderr)
+        if paths:
+            print(f"[patent-hunter] report : {paths['report']}")
+            print(f"[patent-hunter] scores : {paths['scores']}")
+            print(f"[patent-hunter] log    : {paths['log']}")
+        return 1
     print(f"[patent-hunter] report : {paths['report']}")
     print(f"[patent-hunter] scores : {paths['scores']}")
     print(f"[patent-hunter] log    : {paths['log']}")

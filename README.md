@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)
-![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen)
 
 There are **4.2M+ expired US utility patents** sitting in the public domain. Each one is essentially a free manufacturing manual — dimensions, tolerances, materials, assembly — written when someone thought it was worth $15,000 in legal fees to protect. Nobody re-reads them. Patent Hunter does.
 
@@ -73,8 +73,11 @@ python3 -m patent_hunter run
 # Score a specific week, top 10 results
 python3 -m patent_hunter run --week 2026-W19 --top-n 10
 
+# Stop after a completed batch if estimated spend exceeds the guardrail
+python3 -m patent_hunter run --week 2026-W19 --max-cost 10.0
+
 # Run via LangGraph instead of the linear CLI
-.venv/bin/python -m patent_hunter.graph.cli --week 2026-W19 --dryrun
+.venv/bin/python -m patent_hunter.graph.cli --week 2026-W19 --dryrun --max-cost 10.0
 
 # Evaluate the pipeline against the golden dataset
 python3 evals/run_eval.py
@@ -86,6 +89,7 @@ Outputs land under `out/<ISO-week>/`:
 report.html     one-page summary, opens in any browser
 scores.jsonl    every patent x every model (debugging)
 run.log         token counts, estimated cost, wall time
+events.jsonl    structured operational events, one JSON object per line
 ```
 
 Sample CLI output:
@@ -99,6 +103,19 @@ total_cost=$0.3135
 
 A real weekly run consumes Claude Max quota through the local CLI and records
 the CLI-reported usage cost for visibility; no Claude API key billing is used.
+
+### Observability
+
+Each run writes `out/<ISO-week>/events.jsonl` alongside the existing human
+readable `run.log`. The JSONL stream is append-only and is intended for
+`grep`, `jq`, and simple weekly aggregation. Events include `run_started`,
+`fetch_started`, `fetch_done`, `fetch_retry`, `score_started`, `score_retry`,
+`score_done`, `budget_warning`, `budget_exceeded`, and `run_done`.
+
+`--max-cost` defaults to `$10.00`. The runner checks the accumulated estimated
+cost after each completed scoring batch. At 80% of the budget it emits
+`budget_warning`; above the budget it emits `budget_exceeded`, writes the
+partial `report.html` / `scores.jsonl` / `run.log`, and exits with an error.
 
 ### Edge API
 

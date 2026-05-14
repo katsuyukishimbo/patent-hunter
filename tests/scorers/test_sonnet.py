@@ -116,7 +116,11 @@ def test_sonnet_handles_cli_is_error_response():
     assert "not logged in" in out.results[0].error
 
 
-def test_sonnet_handles_nonzero_exit():
+def test_sonnet_handles_nonzero_exit(monkeypatch):
+    async def no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(scorer_sonnet.asyncio, "sleep", no_sleep)
     proc = _fake_process(_cli_stdout("permission denied", is_error=True), returncode=2)
 
     with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
@@ -124,6 +128,28 @@ def test_sonnet_handles_nonzero_exit():
 
     assert out.results[0].error and "invocation_error" in out.results[0].error
     assert "rc=2" in out.results[0].error
+
+
+def test_sonnet_retries_nonzero_exit_then_succeeds(monkeypatch):
+    async def no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(scorer_sonnet.asyncio, "sleep", no_sleep)
+    calls = 0
+    result = json.dumps([{"patent_id": "8234811", "score": 8}])
+
+    async def fake_runner(argv, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _cli_stdout("temporary failure").decode(), "boom", 1
+        return _cli_stdout(result).decode(), "", 0
+
+    out = asyncio.run(scorer_sonnet.score_batch([_patent()], runner=fake_runner))
+
+    assert calls == 2
+    assert out.results[0].error is None
+    assert out.results[0].score == 8
 
 
 def test_sonnet_handles_invalid_cli_wrapper_json():

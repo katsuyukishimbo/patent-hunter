@@ -21,14 +21,17 @@ Design notes:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Iterable, List, Optional
 
 from .categories import CATEGORY_CPC_PREFIXES, all_prefixes, category_of
 from ..models import Patent
+from ..observability import emit
 from ..week import IsoWeek
 
 logger = logging.getLogger(__name__)
@@ -36,10 +39,17 @@ logger = logging.getLogger(__name__)
 GOOGLE_PATENTS_TABLE = "`patents-public-data.patents.publications`"
 DEFAULT_VINTAGE_YEARS = 12
 DEFAULT_QUERY_TIMEOUT = 60.0
+MAX_FETCH_ATTEMPTS = 3
+FETCH_RETRY_BASE_DELAY_SECONDS = 1.0
+FETCH_RETRY_FACTOR = 2.0
 
 
 class BigQueryPatentFetchError(RuntimeError):
     """Raised when BigQuery cannot fetch patent candidates."""
+
+
+class BigQueryRetryExhaustedError(BigQueryPatentFetchError):
+    """Raised after transient BigQuery failures exceed the retry budget."""
 
 
 @dataclass
@@ -202,14 +212,45 @@ def _flatten_rows(rows: Iterable[Any]) -> List[Patent]:
     return patents
 
 
+def _retryable_google_errors(api_exceptions: Any) -> tuple[type[BaseException], ...]:
+    """Return the transient BigQuery exception classes present in this env."""
+
+    names = ("ResourceExhausted", "DeadlineExceeded", "ServiceUnavailable")
+    classes: list[type[BaseException]] = []
+    for name in names:
+        cls = getattr(api_exceptions, name, None)
+        if isinstance(cls, type) and issubclass(cls, BaseException):
+            classes.append(cls)
+    return tuple(classes)
+
+
+def _sleep_between_attempts(delay: float) -> None:
+    """Sleep from sync code while still using asyncio.sleep as the primitive.
+
+    ``fetch_patents`` is sync because the BigQuery client is sync. Runner calls
+    it through ``asyncio.to_thread``; direct test/helper calls have no running
+    event loop. If someone calls it from an active loop, fall back to
+    ``time.sleep`` instead of crashing with ``asyncio.run`` nesting.
+    """
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(asyncio.sleep(delay))
+    else:
+        time.sleep(delay)
+
+
 def fetch_patents(
     week: IsoWeek,
     config: Optional[FetchConfig] = None,
     client: Optional[Any] = None,
 ) -> List[Patent]:
     """Fetch patent candidates for one ISO week from Google Patents BigQuery."""
+    started = time.perf_counter()
     cfg = config or FetchConfig()
     bigquery, api_exceptions, auth_exceptions = _load_google_modules()
+    retryable_errors = _retryable_google_errors(api_exceptions)
 
     start, end = _vintage_window(week, cfg.vintage_years)
     start_int = _date_to_int(start)
@@ -232,19 +273,60 @@ def fetch_patents(
     try:
         if client is None:
             client = bigquery.Client(project=project)
-        logger.info(
-            "Fetching Google Patents BigQuery for grant window %d..%d "
-            "(vintage_years=%d, limit_total=%d)",
-            start_int,
-            end_int,
-            cfg.vintage_years,
-            limit_total,
+        emit(
+            "fetch_started",
+            week=week.label,
+            vintage_years=cfg.vintage_years,
+            max_per_category=cfg.max_per_category,
         )
-        query_job = client.query(sql, job_config=job_config)
-        rows = query_job.result(timeout=cfg.request_timeout)
-        patents = _flatten_rows(rows)
-        logger.info("Kept %d patents from BigQuery result rows", len(patents))
-        return patents
+        for attempt in range(1, MAX_FETCH_ATTEMPTS + 1):
+            try:
+                logger.info(
+                    "Fetching Google Patents BigQuery for grant window %d..%d "
+                    "(vintage_years=%d, limit_total=%d, attempt=%d/%d)",
+                    start_int,
+                    end_int,
+                    cfg.vintage_years,
+                    limit_total,
+                    attempt,
+                    MAX_FETCH_ATTEMPTS,
+                )
+                query_job = client.query(sql, job_config=job_config)
+                rows = query_job.result(timeout=cfg.request_timeout)
+                patents = _flatten_rows(rows)
+                duration_ms = int((time.perf_counter() - started) * 1000)
+                emit(
+                    "fetch_done",
+                    week=week.label,
+                    count=len(patents),
+                    duration_ms=duration_ms,
+                )
+                logger.info("Kept %d patents from BigQuery result rows", len(patents))
+                return patents
+            except retryable_errors as exc:
+                if attempt >= MAX_FETCH_ATTEMPTS:
+                    raise BigQueryRetryExhaustedError(
+                        "BigQuery patent fetch retry exhausted: "
+                        f"{exc.__class__.__name__}: {exc}"
+                    ) from exc
+                delay = FETCH_RETRY_BASE_DELAY_SECONDS * (
+                    FETCH_RETRY_FACTOR ** (attempt - 1)
+                )
+                emit(
+                    "fetch_retry",
+                    level="warn",
+                    week=week.label,
+                    attempt=attempt + 1,
+                    reason=f"{exc.__class__.__name__}: {exc}",
+                )
+                logger.warning(
+                    "BigQuery transient failure (%s), retrying attempt %d/%d in %.1fs",
+                    exc.__class__.__name__,
+                    attempt + 1,
+                    MAX_FETCH_ATTEMPTS,
+                    delay,
+                )
+                _sleep_between_attempts(delay)
     except (api_exceptions.GoogleAPIError, auth_exceptions.GoogleAuthError) as exc:
         raise BigQueryPatentFetchError(
             f"BigQuery patent fetch failed: {exc.__class__.__name__}: {exc}"

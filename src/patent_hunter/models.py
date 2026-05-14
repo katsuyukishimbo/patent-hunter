@@ -87,10 +87,17 @@ class RunStats:
     sonnet_input_tokens: int = 0
     sonnet_output_tokens: int = 0
     sonnet_cost_usd: float = 0.0
+    sonnet_errors: int = 0
     codex_invocations: int = 0
     codex_cost_usd_estimate: float = 0.0
+    codex_errors: int = 0
+    budget_max_usd: float = 10.0
     errors: List[str] = field(default_factory=list)
 
     @property
     def total_cost_usd(self) -> float:
         return round(self.sonnet_cost_usd + self.codex_cost_usd_estimate, 4)
+
+    @property
+    def budget_remaining_usd(self) -> float:
+        return round(self.budget_max_usd - self.total_cost_usd, 4)

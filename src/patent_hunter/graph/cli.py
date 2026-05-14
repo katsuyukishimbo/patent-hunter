@@ -17,6 +17,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from patent_hunter.week import IsoWeek, parse_iso_week, previous_iso_week
+from patent_hunter.runner import AllScoringFailedError, CostBudgetExceededError
 
 from .build import build_graph, dryrun_runtime, graph_config, initial_state
 from .nodes import GraphRuntime
@@ -46,6 +47,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("SCORE_THRESHOLD", "7")),
     )
     parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=float(os.environ.get("MAX_COST_USD", "10.0")),
+        help="Maximum estimated spend in USD before stopping after scoring.",
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         default=Path("out"),
@@ -69,6 +76,7 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             score_threshold=args.score_threshold,
             max_per_category=args.max_per_category,
             top_n=args.top_n,
+            max_cost_usd=args.max_cost,
         )
     else:
         runtime = GraphRuntime(
@@ -77,6 +85,7 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             max_per_category=args.max_per_category,
             vintage_years=args.vintage_years,
             top_n=args.top_n,
+            max_cost_usd=args.max_cost,
         )
 
     app = build_graph(runtime)
@@ -99,7 +108,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    state = asyncio.run(_run(args, week))
+    try:
+        state = asyncio.run(_run(args, week))
+    except (CostBudgetExceededError, AllScoringFailedError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        paths = getattr(exc, "output_paths", {})
+        if paths:
+            print(f"[patent-hunter-graph] report : {paths['report']}")
+            print(f"[patent-hunter-graph] scores : {paths['scores']}")
+            print(f"[patent-hunter-graph] log    : {paths['log']}")
+        return 1
     paths = state.get("report_paths", {})
     print(f"[patent-hunter-graph] week    : {state['week']}")
     print(f"[patent-hunter-graph] fetched : {len(state.get('fetched_patents', []))}")

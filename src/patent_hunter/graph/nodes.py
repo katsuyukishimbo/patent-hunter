@@ -8,8 +8,18 @@ from pathlib import Path
 from typing import Any, Callable
 
 from patent_hunter.fetchers import FetchConfig, fetch_patents
-from patent_hunter.models import Patent, RunStats, ScoredPatent, ScoreResult
-from patent_hunter.runner import RunConfig, _index_by_id, write_outputs
+from patent_hunter.models import Patent, RunStats
+from patent_hunter.observability import configure_events, emit
+from patent_hunter.runner import (
+    AllScoringFailedError,
+    CostBudgetExceededError,
+    RunConfig,
+    _merge_scored,
+    _raise_if_all_scoring_failed,
+    _record_partial_failure_warning,
+    _update_scored_stats,
+    write_outputs,
+)
 from patent_hunter.scorers import codex as scorer_codex
 from patent_hunter.scorers import sonnet as scorer_sonnet
 from patent_hunter.week import parse_iso_week, utcnow_iso
@@ -26,6 +36,7 @@ class GraphRuntime:
     max_per_category: int = 25
     vintage_years: int = 12
     top_n: int = 10
+    max_cost_usd: float = 10.0
     fetched_patents: list[Patent] | None = None
     sonnet_client: Any | None = None
     codex_runner: Callable[..., Any] | None = None
@@ -44,8 +55,23 @@ async def fetch_node(
     """
 
     gr = gr or GraphRuntime()
+    configure_events(week=state["week"], out_dir=gr.out_dir)
+    emit(
+        "run_started",
+        week=state["week"],
+        budget_max_usd=gr.max_cost_usd,
+        max_per_category=gr.max_per_category,
+        vintage_years=gr.vintage_years,
+    )
     if gr.fetched_patents is not None:
+        emit(
+            "fetch_started",
+            week=state["week"],
+            vintage_years=gr.vintage_years,
+            max_per_category=gr.max_per_category,
+        )
         patents = list(gr.fetched_patents)
+        emit("fetch_done", week=state["week"], count=len(patents), duration_ms=0)
     else:
         week = parse_iso_week(state["week"])
         cfg = FetchConfig(
@@ -89,50 +115,48 @@ def verify_node(
     state: PatentHunterState, *, gr: GraphRuntime | None = None
 ) -> PatentHunterState:
     gr = gr or GraphRuntime()
-    sonnet_idx = _index_by_id(state.get("sonnet_results", []))
-    codex_idx = _index_by_id(state.get("codex_results", []))
-
-    scored: list[ScoredPatent] = []
-    for patent in state.get("fetched_patents", []):
-        sonnet = sonnet_idx.get(
-            patent.patent_id,
-            ScoreResult(patent_id=patent.patent_id, model="sonnet", error="absent"),
-        )
-        codex = codex_idx.get(
-            patent.patent_id,
-            ScoreResult(patent_id=patent.patent_id, model="codex", error="absent"),
-        )
-        consensus = (
-            (sonnet.score + codex.score) / 2
-            if (sonnet.score and codex.score)
-            else 0.0
-        )
-        adopted = (
-            sonnet.error is None
-            and codex.error is None
-            and sonnet.score >= gr.score_threshold
-            and codex.score >= gr.score_threshold
-        )
-        scored.append(
-            ScoredPatent(
-                patent=patent,
-                sonnet=sonnet,
-                codex=codex,
-                consensus_score=round(consensus, 2),
-                adopted=adopted,
-            )
-        )
-
-    scored.sort(key=lambda sp: (not sp.adopted, -sp.consensus_score))
+    scored = _merge_scored(
+        state.get("fetched_patents", []),
+        state.get("sonnet_results", []),
+        state.get("codex_results", []),
+        score_threshold=gr.score_threshold,
+    )
     adopted_patents = [sp for sp in scored if sp.adopted]
     cost_usd = round(
         state.get("sonnet_cost_usd", 0.0) + state.get("codex_cost_usd_estimate", 0.0),
         4,
     )
+    sonnet_errors = sum(1 for sp in scored if sp.sonnet.error)
+    codex_errors = sum(1 for sp in scored if sp.codex.error)
+
+    budget_warning = cost_usd >= round(gr.max_cost_usd * 0.8, 4)
+    if budget_warning:
+        emit(
+            "budget_warning",
+            level="warn",
+            week=state["week"],
+            budget_max_usd=gr.max_cost_usd,
+            total_cost_usd=cost_usd,
+            budget_remaining_usd=round(gr.max_cost_usd - cost_usd, 4),
+        )
+    budget_exceeded = cost_usd > gr.max_cost_usd
+    if budget_exceeded:
+        emit(
+            "budget_exceeded",
+            level="error",
+            week=state["week"],
+            budget_max_usd=gr.max_cost_usd,
+            total_cost_usd=cost_usd,
+            budget_remaining_usd=round(gr.max_cost_usd - cost_usd, 4),
+        )
     return {
         "scored_patents": scored,
         "adopted": adopted_patents,
         "cost_usd": cost_usd,
+        "sonnet_errors": sonnet_errors,
+        "codex_errors": codex_errors,
+        "budget_warning_emitted": budget_warning,
+        "budget_exceeded": budget_exceeded,
     }
 
 
@@ -152,9 +176,26 @@ def report_node(
         sonnet_input_tokens=state.get("sonnet_input_tokens", 0),
         sonnet_output_tokens=state.get("sonnet_output_tokens", 0),
         sonnet_cost_usd=state.get("sonnet_cost_usd", 0.0),
+        sonnet_errors=state.get("sonnet_errors", 0),
         codex_invocations=state.get("codex_invocations", 0),
         codex_cost_usd_estimate=state.get("codex_cost_usd_estimate", 0.0),
+        codex_errors=state.get("codex_errors", 0),
+        budget_max_usd=gr.max_cost_usd,
     )
+    _record_partial_failure_warning(stats)
+    pending_scoring_error: AllScoringFailedError | None = None
+    try:
+        _raise_if_all_scoring_failed(stats, state.get("scored_patents", []))
+    except AllScoringFailedError as exc:
+        pending_scoring_error = exc
+    if state.get("budget_exceeded", False):
+        message = (
+            "budget_exceeded: "
+            f"total_cost_usd={state.get('cost_usd', 0.0):.4f} "
+            f"budget_max_usd={gr.max_cost_usd:.4f}"
+        )
+        if message not in stats.errors:
+            stats.errors.append(message)
     cfg = RunConfig(
         week=week,
         out_dir=gr.out_dir,
@@ -162,6 +203,25 @@ def report_node(
         max_per_category=gr.max_per_category,
         vintage_years=gr.vintage_years,
         top_n=gr.top_n,
+        max_cost_usd=gr.max_cost_usd,
     )
     paths = write_outputs(cfg, state.get("scored_patents", []), stats)
+    emit(
+        "run_done",
+        week=stats.week_label,
+        adopted=stats.adopted,
+        total_cost_usd=stats.total_cost_usd,
+        duration_ms=0,
+    )
+    if pending_scoring_error is not None:
+        pending_scoring_error.output_paths = paths
+        raise pending_scoring_error
+    if state.get("budget_exceeded", False):
+        raise CostBudgetExceededError(
+            budget_max_usd=gr.max_cost_usd,
+            total_cost_usd=state.get("cost_usd", 0.0),
+            scored=state.get("scored_patents", []),
+            stats=stats,
+            output_paths=paths,
+        )
     return {"report_paths": {name: str(path) for name, path in paths.items()}}

@@ -24,9 +24,13 @@ class PatentHunterState(TypedDict, total=False):
     adopted: list[ScoredPatent]
     cost_usd: float
     started_at: NotRequired[str]
+    budget_exceeded: NotRequired[bool]
+    budget_warning_emitted: NotRequired[bool]
     sonnet_input_tokens: NotRequired[int]
     sonnet_output_tokens: NotRequired[int]
     sonnet_cost_usd: NotRequired[float]
+    sonnet_errors: NotRequired[int]
     codex_invocations: NotRequired[int]
     codex_cost_usd_estimate: NotRequired[float]
+    codex_errors: NotRequired[int]
     report_paths: NotRequired[dict[str, str]]
