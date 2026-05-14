@@ -1,8 +1,8 @@
-"""Notification Protocol placeholder for P3.
+"""Notification Protocol placeholder for future interactive workflows.
 
-P3 will add Discord notifications and the Approval Gate. This module only
-defines the structural boundary now so the package layout is stable without
-shipping an unused implementation.
+Phase 2 ships one-way Discord webhooks in ``discord.py``. P3 will add Bot /
+Interaction / Approval Gate workflows. This module keeps the structural
+boundary for those future notification sinks.
 """
 
 from __future__ import annotations

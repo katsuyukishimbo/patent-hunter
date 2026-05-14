@@ -54,6 +54,35 @@ async def test_dryrun_end_to_end_populates_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_graph_report_node_sends_discord_notification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls = []
+
+    async def fake_notify_top_patents(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        "patent_hunter.graph.nodes._notify_top_patents",
+        fake_notify_top_patents,
+    )
+
+    runtime = dryrun_runtime(
+        out_dir=tmp_path,
+        discord_webhook_url="https://discord.com/api/webhooks/1/token",
+    )
+    app = build_graph(runtime)
+
+    await app.ainvoke(initial_state("2026-W19"), config=graph_config("2026-W19"))
+
+    assert len(calls) == 1
+    assert calls[0]["webhook_url"] == "https://discord.com/api/webhooks/1/token"
+    assert calls[0]["week_label"] == "2026-W19"
+    assert len([sp for sp in calls[0]["scored"] if sp.adopted]) == 3
+
+
+@pytest.mark.asyncio
 async def test_scorer_nodes_run_in_parallel(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -13,6 +13,7 @@ from typing import Any, Callable, List, Optional
 from .fetchers.bigquery import FetchConfig, fetch_patents
 from .io.report import render_report
 from .models import Patent, RunStats, ScoredPatent, ScoreResult
+from .notifications.discord import send_top_patents
 from .observability import configure_events, emit
 from .scorers.codex import score_batch as codex_score_batch
 from .scorers.sonnet import score_batch as sonnet_score_batch
@@ -35,6 +36,7 @@ class RunConfig:
     fetched_patents: Optional[List[Patent]] = None  # test hook
     sonnet_client: Optional[Any] = None  # test hook
     codex_runner: Optional[Callable[..., Any]] = None  # test hook
+    discord_webhook_url: Optional[str] = None
 
 
 class CostBudgetExceededError(RuntimeError):
@@ -182,6 +184,58 @@ def _emit_run_done(stats: RunStats, started: float) -> None:
         total_cost_usd=stats.total_cost_usd,
         duration_ms=int((time.time() - started) * 1000),
     )
+
+
+async def _notify_top_patents(
+    *,
+    webhook_url: str | None,
+    week_label: str,
+    scored: List[ScoredPatent],
+    top_n: int,
+) -> bool | None:
+    adopted = [sp for sp in scored if sp.adopted]
+    if not webhook_url:
+        logger.info("Discord notification skipped: DISCORD_WEBHOOK_URL is not set")
+        emit(
+            "notification_skipped",
+            week=week_label,
+            reason="discord_webhook_url_missing",
+        )
+        return None
+
+    try:
+        sent = await send_top_patents(webhook_url, week_label, adopted, top_n=top_n)
+    except Exception as exc:  # noqa: BLE001 - notification must not stop a run.
+        logger.warning("Discord notification failed: %s", exc)
+        sent = False
+
+    if sent:
+        logger.info(
+            "Discord notification sent: week=%s adopted=%d",
+            week_label,
+            len(adopted),
+        )
+        emit(
+            "notification_sent",
+            week=week_label,
+            adopted=len(adopted),
+            top_n=min(top_n, len(adopted)),
+        )
+        return True
+
+    logger.warning(
+        "Discord notification failed: week=%s adopted=%d",
+        week_label,
+        len(adopted),
+    )
+    emit(
+        "notification_failed",
+        level="warn",
+        week=week_label,
+        adopted=len(adopted),
+        top_n=min(top_n, len(adopted)),
+    )
+    return False
 
 
 def _check_budget_or_raise(
@@ -474,4 +528,13 @@ def run(cfg: RunConfig) -> dict[str, Path]:
         paths = write_outputs(cfg, exc.scored, exc.stats)
         exc.output_paths = paths
         raise
-    return write_outputs(cfg, scored, stats)
+    paths = write_outputs(cfg, scored, stats)
+    asyncio.run(
+        _notify_top_patents(
+            webhook_url=cfg.discord_webhook_url,
+            week_label=cfg.week.label,
+            scored=scored,
+            top_n=cfg.top_n,
+        )
+    )
+    return paths

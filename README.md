@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)
-![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
 
 There are **4.2M+ expired US utility patents** sitting in the public domain. Each one is essentially a free manufacturing manual — dimensions, tolerances, materials, assembly — written when someone thought it was worth $15,000 in legal fees to protect. Nobody re-reads them. Patent Hunter does.
 
@@ -60,6 +60,20 @@ Public Datasets in BigQuery.
    ```
 6. Optional service-account fallback: set `GOOGLE_APPLICATION_CREDENTIALS` to
    a JSON key path when ADC is not available.
+
+### Discord notifications (optional)
+
+To receive a weekly summary in Discord, create a webhook in your channel:
+
+1. Channel Settings → Integrations → Webhooks → New Webhook
+2. Copy the URL (format: `https://discord.com/api/webhooks/<id>/<token>`)
+3. Add to your `.env`:
+   ```
+   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+   ```
+
+Each weekly run posts the top adopted patents as a Discord Embed. Failures
+to notify do not affect the run itself (best-effort).
 
 ## Usage
 

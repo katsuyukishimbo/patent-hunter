@@ -15,6 +15,7 @@ from patent_hunter.runner import (
     CostBudgetExceededError,
     RunConfig,
     _merge_scored,
+    _notify_top_patents,
     _raise_if_all_scoring_failed,
     _record_partial_failure_warning,
     _update_scored_stats,
@@ -40,6 +41,7 @@ class GraphRuntime:
     fetched_patents: list[Patent] | None = None
     sonnet_client: Any | None = None
     codex_runner: Callable[..., Any] | None = None
+    discord_webhook_url: str | None = None
 
 
 async def fetch_node(
@@ -160,7 +162,7 @@ def verify_node(
     }
 
 
-def report_node(
+async def report_node(
     state: PatentHunterState, *, gr: GraphRuntime | None = None
 ) -> PatentHunterState:
     gr = gr or GraphRuntime()
@@ -204,8 +206,16 @@ def report_node(
         vintage_years=gr.vintage_years,
         top_n=gr.top_n,
         max_cost_usd=gr.max_cost_usd,
+        discord_webhook_url=gr.discord_webhook_url,
     )
     paths = write_outputs(cfg, state.get("scored_patents", []), stats)
+    if pending_scoring_error is None and not state.get("budget_exceeded", False):
+        await _notify_top_patents(
+            webhook_url=gr.discord_webhook_url,
+            week_label=state["week"],
+            scored=state.get("scored_patents", []),
+            top_n=gr.top_n,
+        )
     emit(
         "run_done",
         week=stats.week_label,

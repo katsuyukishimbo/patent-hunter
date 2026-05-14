@@ -87,6 +87,7 @@ def dryrun_runtime(
     max_per_category: int = 10,
     top_n: int = 10,
     max_cost_usd: float = 10.0,
+    discord_webhook_url: str | None = None,
 ) -> GraphRuntime:
     """Build a runtime from the existing ``scripts/dryrun.py`` fixtures."""
 
@@ -102,6 +103,7 @@ def dryrun_runtime(
         max_per_category=max_per_category,
         top_n=top_n,
         max_cost_usd=max_cost_usd,
+        discord_webhook_url=discord_webhook_url,
         fetched_patents=list(FIXTURE_PATENTS),
         sonnet_client=_fake_sonnet_runner,
         codex_runner=_fake_codex_runner,

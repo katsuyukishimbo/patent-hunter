@@ -6,6 +6,7 @@ Usage:
                                 [--vintage-years 12]
                                 [--score-threshold 7]
                                 [--max-cost 10.0]
+                                [--discord-webhook URL]
                                 [--out-dir out]
 """
 
@@ -59,6 +60,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("out"),
         help="Directory under which <ISO-week>/ is written.",
     )
+    run_p.add_argument(
+        "--discord-webhook",
+        type=str,
+        default=None,
+        metavar="URL",
+        help="Discord webhook URL. Defaults to DISCORD_WEBHOOK_URL.",
+    )
     run_p.add_argument("-v", "--verbose", action="store_true")
     return parser
 
@@ -99,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
         vintage_years=args.vintage_years,
         top_n=args.top_n,
         max_cost_usd=args.max_cost,
+        discord_webhook_url=args.discord_webhook
+        or os.environ.get("DISCORD_WEBHOOK_URL")
+        or None,
     )
     try:
         paths = run(cfg)

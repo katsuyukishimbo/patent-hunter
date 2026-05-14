@@ -58,6 +58,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("out"),
         help="Directory under which <ISO-week>/ is written.",
     )
+    parser.add_argument(
+        "--discord-webhook",
+        type=str,
+        default=None,
+        metavar="URL",
+        help="Discord webhook URL. Defaults to DISCORD_WEBHOOK_URL.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
@@ -77,6 +84,9 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             max_per_category=args.max_per_category,
             top_n=args.top_n,
             max_cost_usd=args.max_cost,
+            discord_webhook_url=args.discord_webhook
+            or os.environ.get("DISCORD_WEBHOOK_URL")
+            or None,
         )
     else:
         runtime = GraphRuntime(
@@ -86,6 +96,9 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             vintage_years=args.vintage_years,
             top_n=args.top_n,
             max_cost_usd=args.max_cost,
+            discord_webhook_url=args.discord_webhook
+            or os.environ.get("DISCORD_WEBHOOK_URL")
+            or None,
         )
 
     app = build_graph(runtime)
