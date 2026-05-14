@@ -128,6 +128,17 @@ def score_result_kwargs(obj: dict[str, Any], patent_id: str, raw_text: str) -> d
         "summary_ja": str(obj.get("summary_ja") or ""),
         "opportunity_ja": str(obj.get("opportunity_ja") or ""),
         "next_action_steps_ja": string_list(obj.get("next_action_steps_ja")),
+        "failure_reasons_ja": string_list(obj.get("failure_reasons_ja")),
+        "failure_mitigations_ja": string_list(obj.get("failure_mitigations_ja")),
+        "confidence_score": optional_int(
+            obj.get("confidence_score"), min_value=0, max_value=100
+        ),
+        "confidence_bom": optional_int(
+            obj.get("confidence_bom"), min_value=0, max_value=100
+        ),
+        "confidence_amazon_gap": optional_int(
+            obj.get("confidence_amazon_gap"), min_value=0, max_value=100
+        ),
         "consumer_viable": optional_bool(obj.get("consumer_viable")),
         "bom_estimate": str(obj.get("bom_estimate") or ""),
         "amazon_gap": optional_bool(obj.get("amazon_gap")),

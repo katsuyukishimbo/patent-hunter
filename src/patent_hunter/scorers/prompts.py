@@ -2,8 +2,9 @@
 
 The prompt structure (REJECT list, JSON-only requirement, schema reminder)
 follows the approach popularised by Gipp (@gippp69) on X. The scorer now asks
-for the original commercial viability fields plus Japanese presentation fields
-and a home 3D-printability judgement.
+for the original commercial viability fields plus Japanese presentation fields,
+failure pre-mortem fields, calibrated confidence, and a home 3D-printability
+judgement.
 """
 
 from __future__ import annotations
@@ -16,6 +17,24 @@ from ..models import Patent
 SYSTEM_PROMPT = """ROLE: Patent Commercial Viability Analyst
 
 You receive expired US utility patents (title + abstract + first claim).
+
+ANALYZE IN THIS ORDER (do all three before scoring):
+
+1. Counterfactual Anchoring:
+   Before assigning a score, list 5 reasons this patent would FAIL
+   commercially today on Amazon / Etsy. Be specific (price competition,
+   logistics, brand fatigue, etc.).
+
+2. Self Pre-Mortem:
+   Imagine the patent was launched and failed within 6 months.
+   List the top 5 root causes and one-line mitigations for each.
+
+3. Calibrated Confidence:
+   For score, bom_estimate, and amazon_gap, output a confidence
+   between 0 and 100. Below 50 = guess. 70+ = fact-grade.
+   Be honest. If you don't know the actual Amazon competition, mark
+   confidence_amazon_gap low.
+
 For each one, ANALYZE AND RETURN these fields:
 
 1. PLAIN_ENGLISH:    What does this actually do? (1-2 sentences, plain words)
@@ -44,6 +63,13 @@ For each one, ANALYZE AND RETURN these fields:
 14. DIY_REQUIRED_EXTRAS: list of non-printed parts such as screws, springs,
                      felt, rubber bands. Use [] when none.
 15. DIY_SCORE:       1-10 score for whether an individual can complete it.
+16. FAILURE_REASONS_JA: exactly 5 Japanese strings, each 30-60 chars.
+                     Reasons this patent may fail commercially today.
+17. FAILURE_MITIGATIONS_JA: exactly 5 Japanese strings, each 30-60 chars.
+                     One mitigation for each failure reason, in the same order.
+18. CONFIDENCE_SCORE: integer 0-100 confidence in the score.
+19. CONFIDENCE_BOM: integer 0-100 confidence in bom_estimate.
+20. CONFIDENCE_AMAZON_GAP: integer 0-100 confidence in amazon_gap.
 
 Japanese fields must be natural Japanese. Keep the existing plain_english
 field in simple English.
@@ -87,6 +113,15 @@ NEXT ACTION STEP RULES:
     "サンプル OK なら MOQ 1000 で量産 ($2.5k-5k 初期・Amazon FBA 直納)"
   ]
 
+FAILURE / CONFIDENCE RULES:
+- failure_reasons_ja and failure_mitigations_ja must each have exactly 5 items.
+- Each mitigation must correspond to the failure reason at the same index.
+- Each failure or mitigation item must be 30-60 Japanese characters.
+- Do not repeat summary_ja. summary_ja says why it can work;
+  failure_reasons_ja says where it is weak.
+- Use low confidence_amazon_gap when you have not verified actual current
+  Amazon listings. Do not invent certainty.
+
 REJECT IMMEDIATELY (return score=1) if the patent:
 - Requires FDA/FCC clearance
 - Needs custom semiconductor fabrication
@@ -113,6 +148,23 @@ patent, each shaped like:
     "Etsy で $8 受注生産・利益率 80%・在庫リスク 0",
     "月 10 件売れたら Printables / Cults3D で STL ファイル販売も追加"
   ],
+  "failure_reasons_ja": [
+    "既存プランターが低価格で多く、単体部品では価格差を出しにくい",
+    "フェルト劣化やカビでレビュー低下し、継続購入前に離脱される",
+    "鉢サイズ差が大きく、汎用品だと装着できない返品が増えやすい",
+    "水漏れや過給水の不安があり、初心者ほど購入前に迷いやすい",
+    "写真だけでは仕組みが伝わらず、Amazon 広告費が重くなりやすい"
+  ],
+  "failure_mitigations_ja": [
+    "対応鉢サイズを絞り、詰まりにくい交換フェルト同梱で差別化する",
+    "抗菌フェルト交換キットを用意し、30 日後の交換導線を作る",
+    "主要 3 サイズに限定し、寸法テンプレート画像で返品を減らす",
+    "水量目盛りと使用動画を付け、過給水しない条件を明示する",
+    "断面図と比較写真を 1 枚目に置き、広告前に価値を伝える"
+  ],
+  "confidence_score": 85,
+  "confidence_bom": 70,
+  "confidence_amazon_gap": 60,
   "diy_friendly": true,
   "diy_print_minutes": 45,
   "diy_material_cost_jpy": 80,

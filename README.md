@@ -257,7 +257,32 @@ graph TD;
 | `verify` | Adopt only where `sonnet.score >= 7` **and** `codex.score >= 7`. |
 | `report` | Emit `report.html` + `scores.jsonl` + `run.log`. |
 
+### Prompt engineering techniques (research-backed)
+
+The scorers combine three research-backed techniques to reduce
+hallucinations and false-positive adoptions:
+
+1. **Counterfactual Anchoring** (Tversky & Kahneman 1974)
+   The LLM lists 5 reasons the patent would FAIL commercially before
+   scoring, breaking the inertia toward inflated scores.
+
+2. **Self Pre-Mortem** (Klein 2007, *Harvard Business Review*)
+   The LLM imagines the patent launched and failed in 6 months, then
+   enumerates the top 5 failure causes and a mitigation for each.
+
+3. **Calibrated Confidence Prompting**
+   Every numeric field returns alongside a 0–100 confidence. Use
+   `--min-confidence 70` to filter out adopted patents that the model
+   itself is uncertain about.
+
 ## Roadmap
+
+Patent Hunter is built as a **self-improving system**, not a one-shot
+script. Phases 1–2 are the foundation (a weekly run that produces
+high-signal output). Phases 3 and onward close the feedback loop so the
+pipeline gets better without manual prompt tuning.
+
+### Phase 1–2: Foundation (✅ shipped)
 
 | Status | Capability |
 |:-:|---|
@@ -265,9 +290,50 @@ graph TD;
 | ✅ | Evaluation harness (golden dataset, 4 metrics, regression detection) |
 | ✅ | LangGraph orchestration (parallel fan-out, `MemorySaver` checkpoint) |
 | ✅ | Hono Edge API (REST + SSE + Discord webhook) |
-| ☐ | Discord approval gate (`interrupt` / `resume` via LangGraph) |
-| ☐ | Postgres checkpoint, dynamic-backoff polling, Alibaba RFQ |
-| ☐ | Amazon SP-API listing draft generator |
+| ✅ | Production robustness (retry, partial-failure tolerance, `--max-cost`) |
+| ✅ | Structured events stream (`out/<week>/events.jsonl`) |
+| ✅ | Weekly cron deployment (macOS launchd template) |
+| ✅ | GitHub Actions CI (unit + integration via workflow_dispatch) |
+| ✅ | Japanese localisation + 3D-printability scoring |
+| ✅ | Per-patent "next action steps" for DIY / OEM routes |
+| ✅ | Research-backed prompt techniques (Counterfactual Anchoring, Self Pre-Mortem, Calibrated Confidence) |
+
+### Phase 3: Self-improving loop (planned)
+
+| ID | Capability |
+|---|---|
+| 3.0 | **Self-eval dashboard** — aggregate `events.jsonl` across weeks into a single HTML page (adoption rate, agreement rate, cost trend, DIY ratio). |
+| 3.1 | **Feedback loop** — a Discord bot reads 👍 / 👎 reactions on adopted patents and writes them to `feedback.jsonl`. Monthly rollups feed the golden dataset. |
+| 3.2 | **Auto-improvement agent** — a monthly Claude Code session reads metrics + feedback and opens a GitHub PR proposing prompt / category / threshold changes. Reviewer (human) merges. |
+| 3.3 | **Continuous eval + auto-revert** — every proposed change runs against `evals/cases.json`; regressions auto-revert via CI. |
+| 3.4 | **Schedule agent** — integrate the `autoresearch` Karpathy-style loop so improvements compound without manual intervention. |
+
+### Phase 3.5: Ecosystem (planned)
+
+| ID | Capability |
+|---|---|
+| 3.5.1 | **Custom MCP server** — expose `patent_search` / `score_patent` / `simulate_listing` as Model Context Protocol tools so Claude Desktop, Cursor, and other clients can use Patent Hunter as a primitive. |
+| 3.5.2 | **Anthropic Skills package** — bundle the scoring prompt + few-shot examples as a Claude Code skill installable via `claude /skills install patent-hunter`. |
+| 3.5.3 | **Spec-driven development** — `docs/specs/` carries machine-checkable specs; an LLM generates tests from each spec. |
+| 3.5.4 | **Architecture Decision Records** — see [`docs/adr/`](docs/adr/). |
+
+### Phase 4: Intelligence (planned)
+
+| ID | Capability |
+|---|---|
+| 4.1 | **Vision LLM on patent figures** — score the drawings as well as the text. |
+| 4.2 | **GraphRAG over citations** — use the patent citation graph to detect "really dead" inventions vs ones with active follow-on filings. |
+| 4.3 | **Vector similarity over past adoptions** — pgvector retrieves "what looked like this and how it performed". |
+| 4.4 | **Knowledge distillation** — train a small Haiku-grade scorer on the dual-model history, cutting cost ~10x. |
+| 4.5 | **Computer Use agent** — automate Amazon listing research and Alibaba RFQ submission. |
+
+### Phase 5: Monetisation hand-off (planned, optional)
+
+| ID | Capability |
+|---|---|
+| 5.1 | Amazon SP-API listing draft generator. |
+| 5.2 | Etsy receive-on-demand integration for the DIY route. |
+| 5.3 | Auto STL generation + Printables / BOOTH publishing for sellable models. |
 
 <details>
 <summary><strong>Key design choices</strong></summary>

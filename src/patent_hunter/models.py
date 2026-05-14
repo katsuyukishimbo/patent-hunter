@@ -45,6 +45,11 @@ class ScoreResult:
     summary_ja: str = ""
     opportunity_ja: str = ""
     next_action_steps_ja: list[str] = field(default_factory=list)
+    failure_reasons_ja: list[str] = field(default_factory=list)
+    failure_mitigations_ja: list[str] = field(default_factory=list)
+    confidence_score: int | None = None
+    confidence_bom: int | None = None
+    confidence_amazon_gap: int | None = None
     consumer_viable: Optional[bool] = None
     bom_estimate: str = ""
     amazon_gap: Optional[bool] = None

@@ -5,6 +5,7 @@ Usage:
                                 [--max-per-category 25]
                                 [--vintage-years 12]
                                 [--score-threshold 7]
+                                [--min-confidence 0]
                                 [--max-cost 10.0]
                                 [--diy-only]
                                 [--discord-webhook URL]
@@ -48,6 +49,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--score-threshold",
         type=int,
         default=int(os.environ.get("SCORE_THRESHOLD", "7")),
+    )
+    run_p.add_argument(
+        "--min-confidence",
+        type=int,
+        default=0,
+        help=(
+            "Minimum confidence_score required from both scorers for adoption. "
+            "0 disables the check."
+        ),
     )
     run_p.add_argument(
         "--max-cost",
@@ -114,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         top_n=args.top_n,
         max_cost_usd=args.max_cost,
         diy_only=args.diy_only,
+        min_confidence=args.min_confidence,
         discord_webhook_url=args.discord_webhook
         or os.environ.get("DISCORD_WEBHOOK_URL")
         or None,

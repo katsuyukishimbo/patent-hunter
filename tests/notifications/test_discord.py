@@ -25,6 +25,7 @@ def _scored(
     summary_ja: str = "工具なしで固定でき、外れやすい既存品の不満を爪構造で解決。",
     opportunity_ja: str = "月検索 1.0 万・既存品は外れ不満",
     next_action_steps_ja: list[str] | None = None,
+    failure_reasons_ja: list[str] | None = None,
     diy_friendly: bool = True,
     adopted: bool = True,
 ) -> ScoredPatent:
@@ -33,6 +34,13 @@ def _scored(
         "Onshape で 30 分モデリング・PETG で 35 分印刷・材料費 ¥35",
         "Etsy で $8 受注生産・クリックポスト発送で在庫 0",
         "月 10 件売れたら Printables で STL $4 販売も追加",
+    ]
+    failures = failure_reasons_ja or [
+        "低価格の既存品が多く、単体販売では価格差を出しにくい",
+        "耐久テスト不足だと、数週間後のレビュー低下につながりやすい",
+        "用途を広げすぎると訴求がぼやけ、購入前に比較負けしやすい",
+        "サイズ違いの返品が増えると、少量販売の利益がすぐ消える",
+        "写真だけでは構造価値が伝わらず、広告費が重くなりやすい",
     ]
     sonnet = ScoreResult(
         patent_id=pid,
@@ -47,6 +55,17 @@ def _scored(
         summary_ja=summary_ja,
         opportunity_ja=opportunity_ja,
         next_action_steps_ja=steps,
+        failure_reasons_ja=failures,
+        failure_mitigations_ja=[
+            "用途とサイズを絞り、比較画像で価格差の理由を明確にする",
+            "簡易耐久テストを商品画像に載せ、保証範囲も短く明記する",
+            "最初は一用途専用で出し、検索語と訴求を細く合わせる",
+            "購入前の寸法確認画像を用意し、返品条件を明確にする",
+            "断面図と使用動画を先頭に置き、広告前に価値を伝える",
+        ],
+        confidence_score=85,
+        confidence_bom=70,
+        confidence_amazon_gap=60,
         diy_friendly=diy_friendly,
         diy_print_minutes=45,
         diy_material_cost_jpy=80,
@@ -66,6 +85,17 @@ def _scored(
         summary_ja=summary_ja,
         opportunity_ja=opportunity_ja,
         next_action_steps_ja=steps,
+        failure_reasons_ja=failures,
+        failure_mitigations_ja=[
+            "用途とサイズを絞り、比較画像で価格差の理由を明確にする",
+            "簡易耐久テストを商品画像に載せ、保証範囲も短く明記する",
+            "最初は一用途専用で出し、検索語と訴求を細く合わせる",
+            "購入前の寸法確認画像を用意し、返品条件を明確にする",
+            "断面図と使用動画を先頭に置き、広告前に価値を伝える",
+        ],
+        confidence_score=90,
+        confidence_bom=75,
+        confidence_amazon_gap=65,
         diy_friendly=diy_friendly,
         diy_print_minutes=50,
         diy_material_cost_jpy=90,
@@ -105,7 +135,10 @@ def test_format_embed_builds_expected_payload() -> None:
     assert "工具なしで固定でき" in field["value"]
     assert "💡 売り筋: 月検索 1.0 万・既存品は外れ不満" in field["value"]
     assert "🏭 製造原価: $1-2 (≒ ¥150-300 円)" in field["value"]
+    assert "🎯 信頼度: score 85% / BOM 70% / gap 60%" in field["value"]
     assert "🔧 個人 3D プリント OK · 45分 · ¥80" in field["value"]
+    assert "⚠️ 失敗想定 (Top 3):" in field["value"]
+    assert "低価格の既存品が多く" in field["value"]
     assert "🚀 次の一歩:" in field["value"]
     assert "1. Onshape で 30 分モデリング" in field["value"]
     assert "2. Etsy で $8 受注生産" in field["value"]

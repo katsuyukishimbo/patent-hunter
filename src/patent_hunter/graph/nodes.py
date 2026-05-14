@@ -39,6 +39,7 @@ class GraphRuntime:
     top_n: int = 10
     max_cost_usd: float = 10.0
     diy_only: bool = False
+    min_confidence: int = 0
     fetched_patents: list[Patent] | None = None
     sonnet_client: Any | None = None
     codex_runner: Callable[..., Any] | None = None
@@ -65,6 +66,7 @@ async def fetch_node(
         budget_max_usd=gr.max_cost_usd,
         max_per_category=gr.max_per_category,
         vintage_years=gr.vintage_years,
+        min_confidence=gr.min_confidence,
     )
     if gr.fetched_patents is not None:
         emit(
@@ -124,6 +126,7 @@ def verify_node(
         state.get("codex_results", []),
         score_threshold=gr.score_threshold,
         diy_only=gr.diy_only,
+        min_confidence=gr.min_confidence,
     )
     adopted_patents = [sp for sp in scored if sp.adopted]
     cost_usd = round(
@@ -209,6 +212,7 @@ async def report_node(
         top_n=gr.top_n,
         max_cost_usd=gr.max_cost_usd,
         diy_only=gr.diy_only,
+        min_confidence=gr.min_confidence,
         discord_webhook_url=gr.discord_webhook_url,
     )
     paths = write_outputs(cfg, state.get("scored_patents", []), stats)

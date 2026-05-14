@@ -48,6 +48,11 @@ def test_score_result_kwargs_normalizes_new_fields():
         "summary_ja": "径違いのケーブルを工具なしで固定する。",
         "opportunity_ja": "月検索 6.4 万・既存品は外れ不満",
         "next_action_steps_ja": ["Onshape で 30 分", "Etsy で $8", "STL 販売"],
+        "failure_reasons_ja": ["価格競争で埋もれる"],
+        "failure_mitigations_ja": ["用途を絞って比較画像を出す"],
+        "confidence_score": 101,
+        "confidence_bom": "-5",
+        "confidence_amazon_gap": "70",
         "diy_friendly": "true",
         "diy_print_minutes": 5,
         "diy_material_cost_jpy": 9999,
@@ -65,6 +70,11 @@ def test_score_result_kwargs_normalizes_new_fields():
         "Etsy で $8",
         "STL 販売",
     ]
+    assert out["failure_reasons_ja"] == ["価格競争で埋もれる"]
+    assert out["failure_mitigations_ja"] == ["用途を絞って比較画像を出す"]
+    assert out["confidence_score"] == 100
+    assert out["confidence_bom"] == 0
+    assert out["confidence_amazon_gap"] == 70
     assert out["diy_friendly"] is True
     assert out["diy_print_minutes"] == 10
     assert out["diy_material_cost_jpy"] == 2000

@@ -10,6 +10,14 @@ def test_system_prompt_mentions_japanese_and_diy_fields() -> None:
     assert "summary_ja" in SYSTEM_PROMPT
     assert "opportunity_ja" in SYSTEM_PROMPT
     assert "next_action_steps_ja" in SYSTEM_PROMPT
+    assert "Counterfactual Anchoring" in SYSTEM_PROMPT
+    assert "Self Pre-Mortem" in SYSTEM_PROMPT
+    assert "Calibrated Confidence" in SYSTEM_PROMPT
+    assert "failure_reasons_ja" in SYSTEM_PROMPT
+    assert "failure_mitigations_ja" in SYSTEM_PROMPT
+    assert "confidence_score" in SYSTEM_PROMPT
+    assert "confidence_bom" in SYSTEM_PROMPT
+    assert "confidence_amazon_gap" in SYSTEM_PROMPT
     assert "diy_friendly" in SYSTEM_PROMPT
     assert "diy_print_minutes" in SYSTEM_PROMPT
     assert "diy_material_cost_jpy" in SYSTEM_PROMPT

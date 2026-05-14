@@ -54,6 +54,17 @@ async def test_dryrun_end_to_end_populates_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_graph_min_confidence_filters_dryrun_adoptions(tmp_path: Path) -> None:
+    runtime = dryrun_runtime(out_dir=tmp_path, min_confidence=80)
+    app = build_graph(runtime)
+
+    state = await app.ainvoke(initial_state("2026-W19"), config=graph_config("2026-W19"))
+
+    assert len(state["adopted"]) == 1
+    assert state["adopted"][0].patent.patent_id == "8234811"
+
+
+@pytest.mark.asyncio
 async def test_graph_report_node_sends_discord_notification(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

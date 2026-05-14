@@ -45,12 +45,20 @@ npm run typecheck
 
 ## Sub-package Responsibilities
 
-- `fetchers/`: patent and marketplace candidate fetchers. `patentsview.py` is the current P1 source; `base.py` defines the future fetcher Protocol.
-- `scorers/`: independent LLM scoring adapters. `sonnet.py` and `codex.py` share prompts and JSON extraction helpers.
-- `graph/`: LangGraph orchestration only. Business logic stays in fetchers, scorers, and runner IO.
+- `fetchers/`: patent and marketplace candidate fetchers. `bigquery.py` is the current production source; `legacy_patentsview.py` is preserved for reference (see [ADR-001](docs/adr/ADR-001-data-source-bigquery.md)); `base.py` defines the fetcher Protocol.
+- `scorers/`: independent LLM scoring adapters. `sonnet.py` (Claude CLI subprocess) and `codex.py` (Codex CLI subprocess) share prompts and JSON extraction. See [ADR-002](docs/adr/ADR-002-claude-cli-cwd-tmp.md) for the `cwd=/tmp` requirement and [ADR-003](docs/adr/ADR-003-dual-independent-scoring.md) for the Clean Context for Verifier pattern.
+- `graph/`: LangGraph orchestration only. Business logic stays in fetchers, scorers, and runner IO. Node kwarg naming uses `gr=` (see [ADR-004](docs/adr/ADR-004-langgraph-gr-parameter.md)).
 - `io/`: report rendering and packaged templates.
-- `notifications/`: P3 Discord/Approval Gate Protocol placeholder.
-- `checkpointers/`: P4 durable checkpoint Protocol placeholder.
+- `notifications/`: Discord webhook (Phase 2). Future Approval Gate logic lands here in Phase 3.
+- `checkpointers/`: durable checkpoint Protocol placeholder (Phase 4 Postgres backend).
+- `observability/`: append-only `events.jsonl` writer used by every layer.
+
+## Architecture Decision Records
+
+Major design judgements are recorded under [`docs/adr/`](docs/adr/).
+When you make a non-obvious change — a new external service, a
+counter-intuitive default, a workaround for a framework reserved
+keyword — add an ADR before merging. Use the [template](docs/adr/ADR-template.md).
 
 ## PR Template
 

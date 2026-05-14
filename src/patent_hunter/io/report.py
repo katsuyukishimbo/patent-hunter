@@ -33,6 +33,7 @@ def render_report(
     stats: RunStats,
     score_threshold: int,
     diy_only: bool = False,
+    min_confidence: int = 0,
 ) -> str:
     env = _env()
     template = env.get_template("report.html.j2")
@@ -42,4 +43,5 @@ def render_report(
         stats=stats,
         score_threshold=score_threshold,
         diy_only=diy_only,
+        min_confidence=min_confidence,
     )

@@ -98,6 +98,46 @@ def _preferred_next_steps(scored: ScoredPatent) -> list[str]:
     return fallback[:3]
 
 
+def _preferred_failure_reasons(scored: ScoredPatent) -> list[str]:
+    """Return display-ready failure reasons from the first scorer that has them."""
+    fallback: list[str] = []
+    for result in (scored.sonnet, scored.codex):
+        reasons = [
+            str(reason).strip()
+            for reason in result.failure_reasons_ja
+            if str(reason).strip()
+        ]
+        if len(reasons) >= 3:
+            return reasons[:3]
+        if reasons and not fallback:
+            fallback = reasons
+    return fallback[:3]
+
+
+def _min_confidence(values: list[int | None]) -> int | None:
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    return min(present)
+
+
+def _confidence_badge(scored: ScoredPatent) -> str:
+    score = _min_confidence(
+        [scored.sonnet.confidence_score, scored.codex.confidence_score]
+    )
+    bom = _min_confidence([scored.sonnet.confidence_bom, scored.codex.confidence_bom])
+    gap = _min_confidence(
+        [scored.sonnet.confidence_amazon_gap, scored.codex.confidence_amazon_gap]
+    )
+    if score is None and bom is None and gap is None:
+        return ""
+
+    def fmt(value: int | None) -> str:
+        return "?" if value is None else f"{value}%"
+
+    return f"🎯 信頼度: score {fmt(score)} / BOM {fmt(bom)} / gap {fmt(gap)}"
+
+
 def _field_for_patent(index: int, scored: ScoredPatent) -> dict[str, Any]:
     patent = scored.patent
     title = _preferred_ja(scored, "short_title_ja", patent.title)
@@ -110,13 +150,20 @@ def _field_for_patent(index: int, scored: ScoredPatent) -> dict[str, Any]:
     opportunity = _preferred_ja(scored, "opportunity_ja", "不明")
     bom = _preferred_bom(scored)
     lines = [
-        _truncate(summary or "概要なし", 180),
+        _truncate(summary or "概要なし", 90),
         f"💡 売り筋: {opportunity or '不明'}",
         f"🏭 製造原価: {bom} (≒ ¥{usd_range_to_jpy(bom)})",
     ]
+    confidence_badge = _confidence_badge(scored)
+    if confidence_badge:
+        lines.append(confidence_badge)
     badge = _diy_badge(scored)
     if badge:
         lines.append(badge)
+    failure_reasons = _preferred_failure_reasons(scored)
+    if failure_reasons:
+        lines.append("⚠️ 失敗想定 (Top 3):")
+        lines.extend(f"・{_truncate(reason, 80)}" for reason in failure_reasons)
     next_steps = _preferred_next_steps(scored)
     if next_steps:
         lines.append("🚀 次の一歩:")

@@ -20,6 +20,12 @@ def test_run_cli_accepts_diy_only() -> None:
     assert args.diy_only is True
 
 
+def test_run_cli_accepts_min_confidence() -> None:
+    args = _build_parser().parse_args(["run", "--min-confidence", "80"])
+
+    assert args.min_confidence == 80
+
+
 def test_run_cli_accepts_discord_webhook() -> None:
     args = _build_parser().parse_args(
         ["run", "--discord-webhook", "https://discord.com/api/webhooks/1/token"]
@@ -36,6 +42,7 @@ def test_run_cli_reads_discord_webhook_env(
     def fake_run(cfg):
         captured["discord_webhook_url"] = cfg.discord_webhook_url
         captured["diy_only"] = cfg.diy_only
+        captured["min_confidence"] = cfg.min_confidence
         out_dir = tmp_path / cfg.week.label
         return {
             "report": out_dir / "report.html",
@@ -58,6 +65,8 @@ def test_run_cli_reads_discord_webhook_env(
                 "--out-dir",
                 str(tmp_path),
                 "--diy-only",
+                "--min-confidence",
+                "75",
             ]
         )
         == 0
@@ -66,6 +75,7 @@ def test_run_cli_reads_discord_webhook_env(
         "https://discord.com/api/webhooks/env/token"
     )
     assert captured["diy_only"] is True
+    assert captured["min_confidence"] == 75
     capsys.readouterr()
 
 
@@ -79,6 +89,12 @@ def test_graph_cli_accepts_diy_only() -> None:
     args = _build_graph_parser().parse_args(["--dryrun", "--diy-only"])
 
     assert args.diy_only is True
+
+
+def test_graph_cli_accepts_min_confidence() -> None:
+    args = _build_graph_parser().parse_args(["--dryrun", "--min-confidence", "80"])
+
+    assert args.min_confidence == 80
 
 
 def test_graph_cli_accepts_discord_webhook() -> None:

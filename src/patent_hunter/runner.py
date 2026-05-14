@@ -34,6 +34,7 @@ class RunConfig:
     top_n: int = 10
     max_cost_usd: float = 10.0
     diy_only: bool = False
+    min_confidence: int = 0
     fetched_patents: Optional[List[Patent]] = None  # test hook
     sonnet_client: Optional[Any] = None  # test hook
     codex_runner: Optional[Callable[..., Any]] = None  # test hook
@@ -89,6 +90,17 @@ def _index_by_id(results: List[ScoreResult]) -> dict[str, ScoreResult]:
     return {r.patent_id: r for r in results}
 
 
+def _passes_confidence(result: ScoreResult, min_confidence: int) -> bool:
+    """Return whether a scorer's confidence clears the adoption threshold.
+
+    ``None`` means the scorer did not return the new field, so skip the check
+    for backwards compatibility with historical fixtures and saved outputs.
+    """
+    if min_confidence <= 0 or result.confidence_score is None:
+        return True
+    return result.confidence_score >= min_confidence
+
+
 def _merge_scored(
     patents: List[Patent],
     sonnet_results: List[ScoreResult],
@@ -96,6 +108,7 @@ def _merge_scored(
     *,
     score_threshold: int,
     diy_only: bool = False,
+    min_confidence: int = 0,
 ) -> List[ScoredPatent]:
     sonnet_idx = _index_by_id(sonnet_results)
     codex_idx = _index_by_id(codex_results)
@@ -116,6 +129,8 @@ def _merge_scored(
             and c.error is None
             and s.score >= score_threshold
             and c.score >= score_threshold
+            and _passes_confidence(s, min_confidence)
+            and _passes_confidence(c, min_confidence)
         )
         if diy_only:
             adopted = adopted and s.diy_friendly is True and c.diy_friendly is True
@@ -364,6 +379,7 @@ async def run_async(cfg: RunConfig) -> tuple[List[ScoredPatent], RunStats]:
         budget_max_usd=stats.budget_max_usd,
         max_per_category=cfg.max_per_category,
         vintage_years=cfg.vintage_years,
+        min_confidence=cfg.min_confidence,
     )
 
     # Stage 1: fetch (deterministic)
@@ -433,6 +449,7 @@ async def run_async(cfg: RunConfig) -> tuple[List[ScoredPatent], RunStats]:
             all_codex,
             score_threshold=cfg.score_threshold,
             diy_only=cfg.diy_only,
+            min_confidence=cfg.min_confidence,
         )
         _update_scored_stats(stats, partial_scored)
         budget_warning_emitted = _check_budget_or_raise(
@@ -450,6 +467,7 @@ async def run_async(cfg: RunConfig) -> tuple[List[ScoredPatent], RunStats]:
         all_codex,
         score_threshold=cfg.score_threshold,
         diy_only=cfg.diy_only,
+        min_confidence=cfg.min_confidence,
     )
     _update_scored_stats(stats, scored)
     _record_partial_failure_warning(stats)
@@ -494,6 +512,7 @@ def write_outputs(
         f.write(f"codex_invocations={stats.codex_invocations}\n")
         f.write(f"codex_cost_usd_estimate={stats.codex_cost_usd_estimate}\n")
         f.write(f"codex_errors={stats.codex_errors}\n")
+        f.write(f"min_confidence={cfg.min_confidence}\n")
         f.write(f"total_cost_usd={stats.total_cost_usd}\n")
         f.write(f"budget_max_usd={stats.budget_max_usd}\n")
         f.write(f"budget_remaining_usd={stats.budget_remaining_usd}\n")
@@ -515,6 +534,7 @@ def write_outputs(
         stats=stats,
         score_threshold=cfg.score_threshold,
         diy_only=cfg.diy_only,
+        min_confidence=cfg.min_confidence,
     )
     report_path.write_text(report_html, encoding="utf-8")
 

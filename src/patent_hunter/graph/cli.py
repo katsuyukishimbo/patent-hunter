@@ -47,6 +47,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("SCORE_THRESHOLD", "7")),
     )
     parser.add_argument(
+        "--min-confidence",
+        type=int,
+        default=0,
+        help=(
+            "Minimum confidence_score required from both scorers for adoption. "
+            "0 disables the check."
+        ),
+    )
+    parser.add_argument(
         "--max-cost",
         type=float,
         default=float(os.environ.get("MAX_COST_USD", "10.0")),
@@ -90,6 +99,7 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             top_n=args.top_n,
             max_cost_usd=args.max_cost,
             diy_only=args.diy_only,
+            min_confidence=args.min_confidence,
             discord_webhook_url=args.discord_webhook
             or os.environ.get("DISCORD_WEBHOOK_URL")
             or None,
@@ -103,6 +113,7 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             top_n=args.top_n,
             max_cost_usd=args.max_cost,
             diy_only=args.diy_only,
+            min_confidence=args.min_confidence,
             discord_webhook_url=args.discord_webhook
             or os.environ.get("DISCORD_WEBHOOK_URL")
             or None,

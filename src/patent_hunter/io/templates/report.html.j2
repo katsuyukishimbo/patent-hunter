@@ -11,6 +11,8 @@
   .badge-adopted { background: #198754; }
   .badge-shortlist { background: #6c757d; }
   .badge-diy { background: #0d6efd; }
+  .confidence { min-width: 9rem; }
+  .failure-list { font-size: 0.92rem; }
   .small-meta { font-size: 0.85rem; color: #555; }
   .next-steps { font-size: 0.92rem; }
   .next-steps ol { padding-left: 1.25rem; }
@@ -24,6 +26,7 @@
     取得 <strong>{{ stats.fetched }}</strong> ·
     採点 <strong>{{ stats.scored }}</strong> ·
     採用 (両モデル ≥ {{ score_threshold }}) <strong>{{ stats.adopted }}</strong> ·
+    {% if min_confidence %}信頼度 ≥ {{ min_confidence }}% ·{% endif %}
     {% if diy_only %}DIY モード ·{% endif %}
     費用 ~ <strong>${{ "%.4f"|format(stats.total_cost_usd) }}</strong>
     (Sonnet ${{ "%.4f"|format(stats.sonnet_cost_usd) }} +
@@ -53,6 +56,7 @@
         <th>BOM</th>
         <th>Amazon 機会</th>
         <th>DIY</th>
+        <th class="confidence">信頼度</th>
         <th class="signal">レビュー不満</th>
         <th>Sonnet</th>
         <th>Codex</th>
@@ -67,6 +71,10 @@
       {% set opportunity = sp.sonnet.opportunity_ja or sp.codex.opportunity_ja %}
       {% set diy = sp.sonnet if sp.sonnet.diy_friendly else sp.codex %}
       {% set next_steps = sp.sonnet.next_action_steps_ja or sp.codex.next_action_steps_ja %}
+      {% set failure_source = sp.sonnet if sp.sonnet.failure_reasons_ja else sp.codex %}
+      {% set failure_reasons = failure_source.failure_reasons_ja %}
+      {% set failure_mitigations = failure_source.failure_mitigations_ja %}
+      {% set collapse_id = "failures-" ~ loop.index %}
       <tr>
         <td>{{ loop.index }}</td>
         <td>
@@ -107,6 +115,25 @@
             <span class="badge bg-secondary">対象外</span>
           {% endif %}
         </td>
+        <td class="confidence">
+          <div class="small-meta">
+            Sonnet:
+            score {{ (sp.sonnet.confidence_score ~ "%") if sp.sonnet.confidence_score is not none else "?" }}
+            / BOM {{ (sp.sonnet.confidence_bom ~ "%") if sp.sonnet.confidence_bom is not none else "?" }}
+            / gap {{ (sp.sonnet.confidence_amazon_gap ~ "%") if sp.sonnet.confidence_amazon_gap is not none else "?" }}
+          </div>
+          <div class="small-meta">
+            Codex:
+            score {{ (sp.codex.confidence_score ~ "%") if sp.codex.confidence_score is not none else "?" }}
+            / BOM {{ (sp.codex.confidence_bom ~ "%") if sp.codex.confidence_bom is not none else "?" }}
+            / gap {{ (sp.codex.confidence_amazon_gap ~ "%") if sp.codex.confidence_amazon_gap is not none else "?" }}
+          </div>
+          {% if failure_reasons %}
+          <button class="btn btn-sm btn-outline-secondary mt-1" type="button" data-bs-toggle="collapse" data-bs-target="#{{ collapse_id }}" aria-expanded="false" aria-controls="{{ collapse_id }}">
+            失敗想定
+          </button>
+          {% endif %}
+        </td>
         <td class="signal">{{ sp.sonnet.review_signal or sp.codex.review_signal or "—" }}</td>
         <td>{{ sp.sonnet.score }}{% if sp.sonnet.error %} <span class="small-meta">(err)</span>{% endif %}</td>
         <td>{{ sp.codex.score }}{% if sp.codex.error %} <span class="small-meta">(err)</span>{% endif %}</td>
@@ -119,10 +146,32 @@
           {% endif %}
         </td>
       </tr>
+      {% if failure_reasons %}
+      <tr class="table-warning">
+        <td></td>
+        <td colspan="12">
+          <div class="collapse" id="{{ collapse_id }}">
+            <div class="failure-list">
+              <strong>⚠️ 失敗想定と回避策</strong>
+              <ol class="mb-0 mt-1">
+                {% for reason in failure_reasons[:5] %}
+                <li>
+                  {{ reason }}
+                  {% if failure_mitigations|length >= loop.index %}
+                    <div class="small-meta">回避策: {{ failure_mitigations[loop.index0] }}</div>
+                  {% endif %}
+                </li>
+                {% endfor %}
+              </ol>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endif %}
       {% if next_steps %}
       <tr class="table-light">
         <td></td>
-        <td colspan="11">
+        <td colspan="12">
           <div class="next-steps">
             <strong>🚀 次の一歩</strong>
             <ol class="mb-0 mt-1">
@@ -141,8 +190,10 @@
 
   <p class="small-meta mt-4">
     採用 = Sonnet と Codex の両方が score ≥ {{ score_threshold }} を返したもの。
+    {% if min_confidence %}confidence_score ≥ {{ min_confidence }}% も必要。{% endif %}
     Raw scores は <code>scores.jsonl</code>、run metadata は <code>run.log</code>。
   </p>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
