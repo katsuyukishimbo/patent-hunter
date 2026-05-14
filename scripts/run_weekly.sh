@@ -15,9 +15,15 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${PROJECT_DIR}"
 
-# launchd starts with a minimal env; the user's interactive shell may have
-# exported a different service-account JSON path. Force the project to use
-# ADC (gcloud auth application-default login) by clearing this var.
+# launchd starts with a minimal env (PATH usually just /usr/bin:/bin:/usr/sbin:/sbin).
+# Restore the directories that hold node-version-managed binaries (claude / codex
+# CLIs via ndenv) and the usual local install prefixes. Without this the
+# subprocess scorers cannot locate `claude` or `codex`.
+export PATH="${HOME}/.local/bin:${HOME}/.ndenv/shims:${HOME}/.ndenv/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+# Force the project to use its own ADC (gcloud auth application-default login)
+# regardless of any inherited service-account JSON path from an unrelated
+# workspace.
 unset GOOGLE_APPLICATION_CREDENTIALS
 
 # Load project .env (KEY=VALUE lines). Skip if missing.
