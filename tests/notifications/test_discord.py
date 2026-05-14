@@ -21,6 +21,10 @@ def _scored(
     *,
     title: str | None = None,
     plain_english: str = "A simple consumer product with obvious sourcing paths.",
+    short_title_ja: str = "🔧 便利クリップ",
+    summary_ja: str = "工具なしで固定でき、外れやすい既存品の不満を爪構造で解決。",
+    opportunity_ja: str = "月検索 1.0 万・既存品は外れ不満",
+    diy_friendly: bool = True,
     adopted: bool = True,
 ) -> ScoredPatent:
     patent = make_patent(pid, title=title)
@@ -33,6 +37,14 @@ def _scored(
         amazon_gap=True,
         review_signal="reviews mention durability",
         score=8,
+        short_title_ja=short_title_ja,
+        summary_ja=summary_ja,
+        opportunity_ja=opportunity_ja,
+        diy_friendly=diy_friendly,
+        diy_print_minutes=45,
+        diy_material_cost_jpy=80,
+        diy_required_extras=[],
+        diy_score=8,
     )
     codex = ScoreResult(
         patent_id=pid,
@@ -43,6 +55,14 @@ def _scored(
         amazon_gap=True,
         review_signal="gap exists",
         score=9,
+        short_title_ja=short_title_ja,
+        summary_ja=summary_ja,
+        opportunity_ja=opportunity_ja,
+        diy_friendly=diy_friendly,
+        diy_print_minutes=50,
+        diy_material_cost_jpy=90,
+        diy_required_extras=[],
+        diy_score=8,
     )
     return ScoredPatent(
         patent=patent,
@@ -68,20 +88,30 @@ def test_format_embed_builds_expected_payload() -> None:
 
     assert payload["username"] == "Patent Hunter"
     [embed] = payload["embeds"]
-    assert embed["title"] == "📋 Patent Hunter — Week 2026-W19"
-    assert embed["description"] == "**2 patents** scored 7+ by both Sonnet and Codex."
+    assert embed["title"] == "📋 Patent Hunter — Week 2026-W19 (2 件採用)"
+    assert embed["description"] == "2 件が両モデルでスコア 7+ で合意"
     assert embed["color"] == 0x198754
     assert len(embed["fields"]) == 1
     [field] = embed["fields"]
-    assert field["name"] == "#1 Patent US-1234567-A"
-    assert "[`US-1234567-A`](https://patents.google.com/patent/US1234567A)" in field[
+    assert field["name"] == "#1 🔧 便利クリップ (スコア 8.5)"
+    assert "工具なしで固定でき" in field["value"]
+    assert "💡 売り筋: 月検索 1.0 万・既存品は外れ不満" in field["value"]
+    assert "🏭 製造原価: $1-2 (≒ ¥150-300 円)" in field["value"]
+    assert "🔧 個人 3D プリント OK · 45分 · ¥80" in field["value"]
+    assert "🔗 [特許リンク](https://patents.google.com/patent/US1234567A)" in field[
         "value"
     ]
-    assert "CPC `A47J`" in field["value"]
-    assert "Consensus: **8.5** (Sonnet 8 / Codex 9)" in field["value"]
     assert field["inline"] is False
     assert embed["footer"]["text"].startswith("Run: ")
-    assert embed["footer"]["text"].endswith("Z")
+    assert embed["footer"]["text"].endswith(" JST")
+
+
+def test_usd_range_to_jpy_supports_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("USD_JPY_RATE", raising=False)
+    assert discord.usd_range_to_jpy("$1.60-2.10", rate=150.0) == "240-315 円"
+
+    monkeypatch.setenv("USD_JPY_RATE", "100")
+    assert discord.usd_range_to_jpy("$1.60-2.10") == "160-210 円"
 
 
 def test_format_embed_enforces_discord_field_and_total_limits() -> None:
@@ -89,7 +119,8 @@ def test_format_embed_enforces_discord_field_and_total_limits() -> None:
         _scored(
             f"US-LONG-{idx}",
             title="Very long patent title " * 30,
-            plain_english="Detailed plain English explanation. " * 200,
+            short_title_ja="とても長い日本語タイトル" * 30,
+            summary_ja="詳細な日本語サマリ。" * 200,
         )
         for idx in range(30)
     ]
@@ -103,7 +134,7 @@ def test_format_embed_enforces_discord_field_and_total_limits() -> None:
         assert len(field["name"]) <= 256
         assert len(field["value"]) <= 1024
     assert embed["fields"][0]["name"].endswith("…")
-    assert "…_" in embed["fields"][0]["value"]
+    assert "…" in embed["fields"][0]["value"]
 
 
 @pytest.mark.asyncio
@@ -191,6 +222,14 @@ def test_runner_emits_notification_failed_without_failing_run(
                             "amazon_gap": True,
                             "review_signal": "noise",
                             "score": 8,
+                            "short_title_ja": "🔧 特許A",
+                            "summary_ja": "特許Aの日本語サマリ。既存品の不満を構造で解決。",
+                            "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                            "diy_friendly": True,
+                            "diy_print_minutes": 45,
+                            "diy_material_cost_jpy": 80,
+                            "diy_required_extras": [],
+                            "diy_score": 8,
                         }
                     ]
                 ),
@@ -210,6 +249,14 @@ def test_runner_emits_notification_failed_without_failing_run(
                     "amazon_gap": False,
                     "review_signal": "x",
                     "score": 8,
+                    "short_title_ja": "🔧 特許A",
+                    "summary_ja": "Codex 特許Aの日本語サマリ。",
+                    "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                    "diy_friendly": True,
+                    "diy_print_minutes": 45,
+                    "diy_material_cost_jpy": 80,
+                    "diy_required_extras": [],
+                    "diy_score": 8,
                 }
             ]
         )

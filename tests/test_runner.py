@@ -13,10 +13,15 @@ from patent_hunter.week import IsoWeek
 from tests.conftest import make_patent
 
 
-def _patent(pid: str, score_pair: tuple[int, int]):
-    """Helper: a patent + the (sonnet, codex) scores we want stubs to return."""
+def _patent(
+    pid: str,
+    score_pair: tuple[int, int],
+    diy_pair: tuple[bool | None, bool | None] = (True, True),
+):
+    """Helper: a patent + the scorer outputs we want stubs to return."""
     p = make_patent(pid)
     p._stub_scores = score_pair  # type: ignore[attr-defined]
+    p._stub_diy = diy_pair  # type: ignore[attr-defined]
     return p
 
 
@@ -41,6 +46,14 @@ def _build_sonnet_runner(scores_by_id):
                 "amazon_gap": True,
                 "review_signal": "noise",
                 "score": scores_by_id[pid][0],
+                "short_title_ja": f"🔧 特許{pid}",
+                "summary_ja": f"特許{pid}の日本語サマリ。既存品の不満を構造で解決。",
+                "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                "diy_friendly": scores_by_id[pid][2][0],
+                "diy_print_minutes": 45,
+                "diy_material_cost_jpy": 80,
+                "diy_required_extras": [],
+                "diy_score": 8,
             }
             for pid in ids
         ]
@@ -70,6 +83,14 @@ def _build_sonnet_runner_with_missing(scores_by_id, missing_ids: set[str]):
                 "amazon_gap": True,
                 "review_signal": "noise",
                 "score": scores_by_id[pid][0],
+                "short_title_ja": f"🔧 特許{pid}",
+                "summary_ja": f"特許{pid}の日本語サマリ。既存品の不満を構造で解決。",
+                "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                "diy_friendly": scores_by_id[pid][2][0],
+                "diy_print_minutes": 45,
+                "diy_material_cost_jpy": 80,
+                "diy_required_extras": [],
+                "diy_score": 8,
             }
             for pid in ids
             if pid not in missing_ids
@@ -102,6 +123,14 @@ def _build_codex_runner(scores_by_id):
                     "amazon_gap": False,
                     "review_signal": "x",
                     "score": scores_by_id[pid][1],
+                    "short_title_ja": f"🔧 特許{pid}",
+                    "summary_ja": f"Codex 特許{pid}の日本語サマリ。",
+                    "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                    "diy_friendly": scores_by_id[pid][2][1],
+                    "diy_print_minutes": 50,
+                    "diy_material_cost_jpy": 90,
+                    "diy_required_extras": [],
+                    "diy_score": 8,
                 }
                 for pid in ids
             ]
@@ -118,7 +147,9 @@ def test_runner_adopts_only_when_both_models_pass(tmp_path: Path):
         _patent("C", (4, 9)),  # rejected (sonnet low)
         _patent("D", (7, 7)),  # adopted (boundary)
     ]
-    scores_by_id = {p.patent_id: p._stub_scores for p in patents}  # type: ignore[attr-defined]
+    scores_by_id = {
+        p.patent_id: (*p._stub_scores, p._stub_diy) for p in patents  # type: ignore[attr-defined]
+    }
 
     cfg = RunConfig(
         week=week,
@@ -142,7 +173,7 @@ def test_runner_adopts_only_when_both_models_pass(tmp_path: Path):
 
     html = paths["report"].read_text()
     assert "Patent Hunter" in html
-    assert "ADOPTED" in html
+    assert "badge-adopted" in html
     assert "US A" in html or "USA" in html  # link present
 
 
@@ -165,7 +196,9 @@ def test_runner_handles_zero_fetched(tmp_path: Path):
 def test_runner_shows_shortlist_when_nothing_adopted(tmp_path: Path):
     week = IsoWeek(2026, 19)
     patents = [_patent("A", (3, 3)), _patent("B", (4, 5))]
-    scores_by_id = {p.patent_id: p._stub_scores for p in patents}  # type: ignore[attr-defined]
+    scores_by_id = {
+        p.patent_id: (*p._stub_scores, p._stub_diy) for p in patents  # type: ignore[attr-defined]
+    }
     cfg = RunConfig(
         week=week,
         out_dir=tmp_path,
@@ -176,15 +209,47 @@ def test_runner_shows_shortlist_when_nothing_adopted(tmp_path: Path):
     )
     paths = run(cfg)
     html = paths["report"].read_text()
-    # No ADOPTED badge, but the shortlist rows must still be rendered.
-    assert "shortlist" in html
-    assert "ADOPTED" not in html
+    # No adopted badge, but the shortlist rows must still be rendered.
+    assert "badge-shortlist" in html
+    assert "badge badge-adopted" not in html
+
+
+def test_runner_diy_only_requires_both_models_to_mark_friendly(tmp_path: Path):
+    week = IsoWeek(2026, 19)
+    patents = [
+        _patent("A", (8, 8), (True, True)),
+        _patent("B", (8, 8), (True, False)),
+        _patent("C", (8, 8), (None, True)),
+        _patent("D", (8, 8), (False, False)),
+    ]
+    scores_by_id = {
+        p.patent_id: (*p._stub_scores, p._stub_diy) for p in patents  # type: ignore[attr-defined]
+    }
+
+    cfg = RunConfig(
+        week=week,
+        out_dir=tmp_path,
+        score_threshold=7,
+        fetched_patents=patents,
+        sonnet_client=_build_sonnet_runner(scores_by_id),
+        codex_runner=_build_codex_runner(scores_by_id),
+        diy_only=True,
+    )
+    paths = run(cfg)
+
+    rows = [json.loads(l) for l in paths["scores"].read_text().splitlines()]
+    adopted_ids = {row["patent"]["patent_id"] for row in rows if row["adopted"]}
+    assert adopted_ids == {"A"}
+    assert "adopted=1" in paths["log"].read_text()
+    assert "DIY モード" in paths["report"].read_text()
 
 
 def test_runner_allows_partial_score_failures(tmp_path: Path):
     week = IsoWeek(2026, 19)
     patents = [_patent(f"P{i:02d}", (8, 8)) for i in range(50)]
-    scores_by_id = {p.patent_id: p._stub_scores for p in patents}  # type: ignore[attr-defined]
+    scores_by_id = {
+        p.patent_id: (*p._stub_scores, p._stub_diy) for p in patents  # type: ignore[attr-defined]
+    }
     missing_ids = {f"P{i:02d}" for i in range(5)}
 
     cfg = RunConfig(
@@ -212,7 +277,9 @@ def test_runner_allows_partial_score_failures(tmp_path: Path):
 def test_runner_budget_exceeded_writes_partial_outputs(tmp_path: Path):
     week = IsoWeek(2026, 19)
     patents = [_patent("A", (8, 8))]
-    scores_by_id = {p.patent_id: p._stub_scores for p in patents}  # type: ignore[attr-defined]
+    scores_by_id = {
+        p.patent_id: (*p._stub_scores, p._stub_diy) for p in patents  # type: ignore[attr-defined]
+    }
     cfg = RunConfig(
         week=week,
         out_dir=tmp_path,

@@ -1,15 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="utf-8" />
 <title>Patent Hunter — {{ week_label }}</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
 <style>
   body { padding: 2rem; }
-  td.plain { max-width: 28rem; }
+  td.summary { max-width: 30rem; }
   td.signal { max-width: 18rem; font-size: 0.9rem; color: #555; }
   .badge-adopted { background: #198754; }
   .badge-shortlist { background: #6c757d; }
+  .badge-diy { background: #0d6efd; }
   .small-meta { font-size: 0.85rem; color: #555; }
   code.pid { font-size: 0.95rem; }
 </style>
@@ -18,10 +19,11 @@
 <div class="container-fluid">
   <h1 class="mb-1">Patent Hunter — {{ week_label }}</h1>
   <p class="small-meta">
-    fetched <strong>{{ stats.fetched }}</strong> ·
-    scored <strong>{{ stats.scored }}</strong> ·
-    adopted (both ≥ {{ score_threshold }}) <strong>{{ stats.adopted }}</strong> ·
-    cost ~ <strong>${{ "%.4f"|format(stats.total_cost_usd) }}</strong>
+    取得 <strong>{{ stats.fetched }}</strong> ·
+    採点 <strong>{{ stats.scored }}</strong> ·
+    採用 (両モデル ≥ {{ score_threshold }}) <strong>{{ stats.adopted }}</strong> ·
+    {% if diy_only %}DIY モード ·{% endif %}
+    費用 ~ <strong>${{ "%.4f"|format(stats.total_cost_usd) }}</strong>
     (Sonnet ${{ "%.4f"|format(stats.sonnet_cost_usd) }} +
      Codex ${{ "%.4f"|format(stats.codex_cost_usd_estimate) }})
     · {{ stats.started_at }} → {{ stats.ended_at }}
@@ -37,47 +39,70 @@
   {% endif %}
 
   {% if not top %}
-    <p class="text-muted">No patents passed scoring this week.</p>
+    <p class="text-muted">今週は採用条件を満たす特許がありませんでした。</p>
   {% else %}
   <table class="table table-striped table-hover align-top">
     <thead>
       <tr>
         <th>#</th>
-        <th>Patent</th>
-        <th>Category</th>
-        <th class="plain">Plain English</th>
+        <th>特許</th>
+        <th>カテゴリ</th>
+        <th class="summary">日本語サマリ</th>
         <th>BOM</th>
-        <th>Amazon gap</th>
-        <th class="signal">Review signal</th>
+        <th>Amazon 機会</th>
+        <th>DIY</th>
+        <th class="signal">レビュー不満</th>
         <th>Sonnet</th>
         <th>Codex</th>
-        <th>Consensus</th>
-        <th>Status</th>
+        <th>合意</th>
+        <th>状態</th>
       </tr>
     </thead>
     <tbody>
       {% for sp in top %}
+      {% set short_title = sp.sonnet.short_title_ja or sp.codex.short_title_ja or sp.patent.title %}
+      {% set summary = sp.sonnet.summary_ja or sp.codex.summary_ja or sp.sonnet.plain_english or sp.codex.plain_english %}
+      {% set opportunity = sp.sonnet.opportunity_ja or sp.codex.opportunity_ja %}
+      {% set diy = sp.sonnet if sp.sonnet.diy_friendly else sp.codex %}
       <tr>
         <td>{{ loop.index }}</td>
         <td>
           <a href="{{ sp.patent.google_patents_url }}" target="_blank" rel="noreferrer">
             <code class="pid">{% if sp.patent.patent_id.startswith("US") %}{{ sp.patent.patent_id }}{% else %}US{{ sp.patent.patent_id }}{% endif %}</code>
           </a>
+          <div><strong>{{ short_title }}</strong></div>
           <div class="small-meta">{{ sp.patent.title }}</div>
-          <div class="small-meta">granted {{ sp.patent.grant_date }} · CPC {{ sp.patent.cpc_code }}</div>
+          <div class="small-meta">公開 {{ sp.patent.grant_date }} · CPC {{ sp.patent.cpc_code }}</div>
           {% if sp.patent.assignee_name %}
-          <div class="small-meta">assignee: {{ sp.patent.assignee_name }}</div>
+          <div class="small-meta">権利者: {{ sp.patent.assignee_name }}</div>
           {% endif %}
         </td>
         <td><span class="badge bg-secondary">{{ sp.patent.category }}</span></td>
-        <td class="plain">{{ sp.sonnet.plain_english or sp.codex.plain_english or "—" }}</td>
+        <td class="summary">
+          {{ summary or "—" }}
+          {% if opportunity %}<div class="small-meta">💡 {{ opportunity }}</div>{% endif %}
+        </td>
         <td>{{ sp.sonnet.bom_estimate or sp.codex.bom_estimate or "—" }}</td>
         <td>
           {% set sg = sp.sonnet.amazon_gap %}
           {% set cg = sp.codex.amazon_gap %}
-          {% if sg and cg %}<span class="badge bg-success">yes (both)</span>
-          {% elif sg or cg %}<span class="badge bg-warning text-dark">partial</span>
-          {% else %}<span class="badge bg-secondary">no</span>{% endif %}
+          {% if sg and cg %}<span class="badge bg-success">あり (両方)</span>
+          {% elif sg or cg %}<span class="badge bg-warning text-dark">片方のみ</span>
+          {% else %}<span class="badge bg-secondary">なし</span>{% endif %}
+        </td>
+        <td>
+          {% if diy.diy_friendly %}
+            <span class="badge badge-diy">🔧 3DプリントOK</span>
+            <div class="small-meta">
+              {{ diy.diy_print_minutes or "?" }}分 · ¥{{ diy.diy_material_cost_jpy or "?" }}
+              {% if diy.diy_score %} · DIY {{ diy.diy_score }}/10{% endif %}
+            </div>
+            {% if diy.diy_required_extras %}
+              <div class="small-meta">追加: {{ diy.diy_required_extras|join(", ") }}</div>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-secondary">対象外</span>
+          {% endif %}
         </td>
         <td class="signal">{{ sp.sonnet.review_signal or sp.codex.review_signal or "—" }}</td>
         <td>{{ sp.sonnet.score }}{% if sp.sonnet.error %} <span class="small-meta">(err)</span>{% endif %}</td>
@@ -85,9 +110,9 @@
         <td><strong>{{ "%.1f"|format(sp.consensus_score) }}</strong></td>
         <td>
           {% if sp.adopted %}
-            <span class="badge badge-adopted">ADOPTED</span>
+            <span class="badge badge-adopted">採用</span>
           {% else %}
-            <span class="badge badge-shortlist">shortlist</span>
+            <span class="badge badge-shortlist">候補</span>
           {% endif %}
         </td>
       </tr>
@@ -97,8 +122,8 @@
   {% endif %}
 
   <p class="small-meta mt-4">
-    Adopted = both Sonnet and Codex returned score ≥ {{ score_threshold }} (Clean Context for Verifier).
-    Raw scores in <code>scores.jsonl</code>; run metadata in <code>run.log</code>.
+    採用 = Sonnet と Codex の両方が score ≥ {{ score_threshold }} を返したもの。
+    Raw scores は <code>scores.jsonl</code>、run metadata は <code>run.log</code>。
   </p>
 </div>
 </body>

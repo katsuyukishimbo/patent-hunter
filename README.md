@@ -91,6 +91,28 @@ To receive a weekly summary in Discord, create a webhook in your channel:
 Each weekly run posts the top adopted patents as a Discord Embed. Failures
 to notify do not affect the run itself (best-effort).
 
+### DIY mode (3D プリント可能なものだけ採用)
+
+Patent Hunter now asks both scoring models for Japanese presentation fields
+(`short_title_ja`, `summary_ja`, `opportunity_ja`) and a 3D-printability
+judgement. Reports and Discord notifications show the Japanese title/summary,
+market opportunity, and a 🔧 badge when a patent looks practical for an
+individual desktop FDM printer.
+
+Use `--diy-only` to adopt only patents where both models return
+`diy_friendly=true`:
+
+```bash
+python3 -m patent_hunter run --week 2026-W19 --diy-only
+
+# Fixture path, no network/API calls
+python3 scripts/dryrun.py --diy-only
+```
+
+JPY material-cost display uses a fixed default exchange rate of 150 JPY/USD.
+Override it for notifications with `USD_JPY_RATE`, for example
+`USD_JPY_RATE=155 python3 scripts/dryrun.py`.
+
 ### Weekly cron (macOS launchd)
 
 To have Patent Hunter run automatically every Monday at 09:00:

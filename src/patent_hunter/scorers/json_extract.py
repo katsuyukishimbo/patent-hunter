@@ -69,3 +69,77 @@ def extract_json_array(text: str) -> List[Any]:
                     raise ValueError("bracket slice was not a list")
                 return loaded
     raise ValueError("unbalanced brackets in response")
+
+
+def optional_bool(v: Any) -> bool | None:
+    """Return a tolerant bool for LLM JSON fields, or None when absent/unknown."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        lo = v.strip().lower()
+        if lo in {"true", "yes", "y", "1"}:
+            return True
+        if lo in {"false", "no", "n", "0"}:
+            return False
+    return None
+
+
+def optional_int(
+    value: Any, *, min_value: int | None = None, max_value: int | None = None
+) -> int | None:
+    """Return an int bounded to the requested range, or None when invalid."""
+    if value is None or value == "":
+        return None
+    try:
+        out = int(value)
+    except (TypeError, ValueError):
+        return None
+    if min_value is not None:
+        out = max(min_value, out)
+    if max_value is not None:
+        out = min(max_value, out)
+    return out
+
+
+def string_list(value: Any) -> list[str]:
+    """Normalize optional LLM list fields without rejecting old responses."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    if isinstance(value, str):
+        value = value.strip()
+        return [value] if value else []
+    return []
+
+
+def score_result_kwargs(obj: dict[str, Any], patent_id: str, raw_text: str) -> dict[str, Any]:
+    """Coerce a scorer JSON object into ScoreResult keyword arguments.
+
+    Older model responses do not contain the Japanese or DIY fields. Those
+    fields intentionally fall back to "", None, or [] here so historical
+    fixtures and persisted JSON remain readable.
+    """
+    score = optional_int(obj.get("score"), min_value=0, max_value=10) or 0
+    return {
+        "patent_id": str(obj.get("patent_id") or patent_id),
+        "plain_english": str(obj.get("plain_english") or ""),
+        "short_title_ja": str(obj.get("short_title_ja") or ""),
+        "summary_ja": str(obj.get("summary_ja") or ""),
+        "opportunity_ja": str(obj.get("opportunity_ja") or ""),
+        "consumer_viable": optional_bool(obj.get("consumer_viable")),
+        "bom_estimate": str(obj.get("bom_estimate") or ""),
+        "amazon_gap": optional_bool(obj.get("amazon_gap")),
+        "review_signal": str(obj.get("review_signal") or ""),
+        "score": score,
+        "diy_friendly": optional_bool(obj.get("diy_friendly")),
+        "diy_print_minutes": optional_int(
+            obj.get("diy_print_minutes"), min_value=10, max_value=600
+        ),
+        "diy_material_cost_jpy": optional_int(
+            obj.get("diy_material_cost_jpy"), min_value=5, max_value=2000
+        ),
+        "diy_required_extras": string_list(obj.get("diy_required_extras")),
+        "diy_score": optional_int(obj.get("diy_score"), min_value=1, max_value=10),
+        "raw": raw_text,
+    }

@@ -53,6 +53,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum estimated spend in USD before stopping after scoring.",
     )
     parser.add_argument(
+        "--diy-only",
+        action="store_true",
+        help="Adopt only patents both models marked as individual 3D-printable.",
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         default=Path("out"),
@@ -84,6 +89,7 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             max_per_category=args.max_per_category,
             top_n=args.top_n,
             max_cost_usd=args.max_cost,
+            diy_only=args.diy_only,
             discord_webhook_url=args.discord_webhook
             or os.environ.get("DISCORD_WEBHOOK_URL")
             or None,
@@ -96,6 +102,7 @@ async def _run(args: argparse.Namespace, week: IsoWeek) -> dict:
             vintage_years=args.vintage_years,
             top_n=args.top_n,
             max_cost_usd=args.max_cost,
+            diy_only=args.diy_only,
             discord_webhook_url=args.discord_webhook
             or os.environ.get("DISCORD_WEBHOOK_URL")
             or None,

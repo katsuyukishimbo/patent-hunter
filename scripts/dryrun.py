@@ -20,6 +20,7 @@ Outputs land under ``out/<ISO-week>/``.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -103,9 +104,52 @@ FIXTURE_PATENTS = [
 # Scores the stubs will return: (sonnet, codex). 4th one is a "bad" patent.
 STUB_SCORES = {
     "8234811": (8, 8),  # adopted
-    "7918184": (9, 7),  # adopted
-    "7178762": (7, 7),  # adopted (boundary)
+    "7918184": (9, 7),  # adopted, but not DIY-friendly
+    "7178762": (7, 7),  # adopted (boundary) and DIY-friendly
     "9000000": (3, 4),  # shortlist only
+}
+
+STUB_DETAILS = {
+    "8234811": {
+        "short_title_ja": "🌱 自動給水ウィック",
+        "summary_ja": "毛細管で水を吸い上げ、詰まりやすい既存プランターの不満を構造で解決。",
+        "opportunity_ja": "月検索 11.8 万・既存品は詰まり不満",
+        "diy_friendly": True,
+        "diy_print_minutes": 45,
+        "diy_material_cost_jpy": 80,
+        "diy_required_extras": ["不織布フェルト x 1"],
+        "diy_score": 8,
+    },
+    "7918184": {
+        "short_title_ja": "🐾 片手ロック給水皿",
+        "summary_ja": "片手で畳める携帯皿。漏れやすい既存品の不満をロック構造で抑える。",
+        "opportunity_ja": "月検索 9.2 万・既存品は漏れ不満",
+        "diy_friendly": False,
+        "diy_print_minutes": 120,
+        "diy_material_cost_jpy": 220,
+        "diy_required_extras": ["食品用シリコン"],
+        "diy_score": 3,
+    },
+    "7178762": {
+        "short_title_ja": "🔌 ラチェット配線留め",
+        "summary_ja": "径違いのケーブルを工具なしで固定し、外れやすい既存クリップを爪構造で解決。",
+        "opportunity_ja": "月検索 6.4 万・既存品は外れ不満",
+        "diy_friendly": True,
+        "diy_print_minutes": 35,
+        "diy_material_cost_jpy": 35,
+        "diy_required_extras": [],
+        "diy_score": 10,
+    },
+    "9000000": {
+        "short_title_ja": "🧽 使い捨てスポンジ",
+        "summary_ja": "単純なスポンジで差別化が弱く、既存品の衛生不満を構造で解決できない。",
+        "opportunity_ja": "月検索 4.1 万・既存品多数",
+        "diy_friendly": False,
+        "diy_print_minutes": 10,
+        "diy_material_cost_jpy": 5,
+        "diy_required_extras": ["スポンジ素材"],
+        "diy_score": 1,
+    },
 }
 
 
@@ -130,6 +174,7 @@ async def _fake_sonnet_runner(argv, timeout):
                 "amazon_gap": score >= 7,
                 "review_signal": "competing products fail in 2 weeks",
                 "score": score,
+                **STUB_DETAILS[pid],
             }
         )
     return json.dumps(
@@ -159,12 +204,21 @@ async def _fake_codex_runner(argv, timeout):
                 "amazon_gap": score >= 7,
                 "review_signal": "unknown",
                 "score": score,
+                **STUB_DETAILS[pid],
             }
         )
     return json.dumps(items)
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run Patent Hunter with fixture data.")
+    parser.add_argument(
+        "--diy-only",
+        action="store_true",
+        help="Adopt only fixture patents both model stubs mark as 3D-printable.",
+    )
+    args = parser.parse_args()
+
     week = previous_iso_week()
     cfg = RunConfig(
         week=week,
@@ -175,6 +229,7 @@ def main():
         fetched_patents=FIXTURE_PATENTS,
         sonnet_client=_fake_sonnet_runner,
         codex_runner=_fake_codex_runner,
+        diy_only=args.diy_only,
     )
     paths = run(cfg)
     print("[dryrun] week    :", week.label)

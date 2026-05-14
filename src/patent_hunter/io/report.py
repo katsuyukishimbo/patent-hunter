@@ -32,6 +32,7 @@ def render_report(
     top: List[ScoredPatent],
     stats: RunStats,
     score_threshold: int,
+    diy_only: bool = False,
 ) -> str:
     env = _env()
     template = env.get_template("report.html.j2")
@@ -40,4 +41,5 @@ def render_report(
         top=top,
         stats=stats,
         score_threshold=score_threshold,
+        diy_only=diy_only,
     )

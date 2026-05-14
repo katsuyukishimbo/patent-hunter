@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+import os
+import re
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -22,6 +25,7 @@ DISCORD_MAX_FIELDS = 25
 DISCORD_FIELD_NAME_MAX = 256
 DISCORD_FIELD_VALUE_MAX = 1024
 DISCORD_EMBED_TOTAL_MAX = 6000
+DEFAULT_USD_JPY_RATE = 150.0
 
 
 def _truncate(value: Any, max_chars: int) -> str:
@@ -37,19 +41,68 @@ def _google_patents_url(patent_id: str) -> str:
     return f"https://patents.google.com/patent/{patent_id.replace('-', '')}"
 
 
+def usd_range_to_jpy(s: str, rate: float = DEFAULT_USD_JPY_RATE) -> str:
+    """Convert a loose USD BOM range like "$1.60-2.10" into a JPY range."""
+    env_rate = os.environ.get("USD_JPY_RATE")
+    if env_rate:
+        try:
+            rate = float(env_rate)
+        except ValueError:
+            pass
+
+    amounts = [float(match) for match in re.findall(r"\d+(?:\.\d+)?", s or "")]
+    if not amounts:
+        return "不明"
+    yen = [int(round(amount * rate)) for amount in amounts[:2]]
+    if len(yen) == 1:
+        return f"{yen[0]} 円"
+    return f"{yen[0]}-{yen[1]} 円"
+
+
+def _preferred_ja(scored: ScoredPatent, attr: str, fallback: str = "") -> str:
+    sonnet_value = getattr(scored.sonnet, attr, "")
+    codex_value = getattr(scored.codex, attr, "")
+    return str(sonnet_value or codex_value or fallback)
+
+
+def _preferred_bom(scored: ScoredPatent) -> str:
+    return scored.sonnet.bom_estimate or scored.codex.bom_estimate or "不明"
+
+
+def _diy_badge(scored: ScoredPatent) -> str:
+    source = scored.sonnet if scored.sonnet.diy_friendly else scored.codex
+    if source.diy_friendly is not True:
+        return ""
+    minutes = source.diy_print_minutes if source.diy_print_minutes is not None else "?"
+    cost = (
+        source.diy_material_cost_jpy
+        if source.diy_material_cost_jpy is not None
+        else "?"
+    )
+    return f"🔧 個人 3D プリント OK · {minutes}分 · ¥{cost}"
+
+
 def _field_for_patent(index: int, scored: ScoredPatent) -> dict[str, Any]:
     patent = scored.patent
-    title = _truncate(patent.title, 80)
-    name = _truncate(f"#{index + 1} {title}", DISCORD_FIELD_NAME_MAX)
-    plain_english = _truncate(scored.sonnet.plain_english, 200)
-    value = (
-        f"[`{patent.patent_id}`]({_google_patents_url(patent.patent_id)})"
-        f" · CPC `{patent.cpc_code}` · {patent.category}\n"
-        f"BOM: {scored.sonnet.bom_estimate} · "
-        f"Consensus: **{scored.consensus_score}** "
-        f"(Sonnet {scored.sonnet.score} / Codex {scored.codex.score})\n"
-        f"_{plain_english}_"
+    title = _preferred_ja(scored, "short_title_ja", patent.title)
+    score = f"{scored.consensus_score:g}"
+    name = _truncate(
+        f"#{index + 1} {title} (スコア {score})",
+        DISCORD_FIELD_NAME_MAX,
     )
+    summary = _preferred_ja(scored, "summary_ja", scored.sonnet.plain_english)
+    opportunity = _preferred_ja(scored, "opportunity_ja", "不明")
+    bom = _preferred_bom(scored)
+    lines = [
+        summary or "概要なし",
+        f"💡 売り筋: {opportunity or '不明'}",
+        f"🏭 製造原価: {bom} (≒ ¥{usd_range_to_jpy(bom)})",
+    ]
+    badge = _diy_badge(scored)
+    if badge:
+        lines.append(badge)
+    lines.append(f"🔗 [特許リンク]({_google_patents_url(patent.patent_id)})")
+    value = "\n".join(lines)
     return {
         "name": name,
         "value": _truncate(value, DISCORD_FIELD_VALUE_MAX),
@@ -101,13 +154,13 @@ def format_embed(
 ) -> dict[str, Any]:
     """Return the Discord webhook JSON payload for top adopted patents."""
 
-    run_ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+    run_ts = datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
     embed: dict[str, Any] = {
-        "title": f"📋 Patent Hunter — Week {week_label}",
-        "description": f"**{len(adopted)} patents** scored 7+ by both Sonnet and Codex.",
+        "title": f"📋 Patent Hunter — Week {week_label} ({len(adopted)} 件採用)",
+        "description": f"{len(adopted)} 件が両モデルでスコア 7+ で合意",
         "color": 0x198754,
         "fields": [],
-        "footer": {"text": f"Run: {run_ts}"},
+        "footer": {"text": f"Run: {run_ts} JST"},
     }
 
     limit = min(max(top_n, 0), DISCORD_MAX_FIELDS)

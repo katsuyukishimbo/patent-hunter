@@ -41,11 +41,19 @@ class ScoreResult:
     patent_id: str
     model: str  # "sonnet" or "codex"
     plain_english: str = ""
+    short_title_ja: str = ""
+    summary_ja: str = ""
+    opportunity_ja: str = ""
     consumer_viable: Optional[bool] = None
     bom_estimate: str = ""
     amazon_gap: Optional[bool] = None
     review_signal: str = ""
     score: int = 0
+    diy_friendly: bool | None = None
+    diy_print_minutes: int | None = None
+    diy_material_cost_jpy: int | None = None
+    diy_required_extras: list[str] = field(default_factory=list)
+    diy_score: int | None = None
     raw: str = ""  # raw JSON text (for debugging)
     error: Optional[str] = None
 

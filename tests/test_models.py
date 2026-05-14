@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from patent_hunter.models import RunStats
+from patent_hunter.models import RunStats, ScoreResult
 
 
 def test_run_stats_budget_remaining() -> None:
@@ -16,3 +16,16 @@ def test_run_stats_budget_remaining() -> None:
 
     assert stats.total_cost_usd == 1.5345
     assert stats.budget_remaining_usd == 0.4655
+
+
+def test_score_result_new_fields_have_safe_defaults() -> None:
+    score = ScoreResult(patent_id="A", model="sonnet")
+
+    assert score.short_title_ja == ""
+    assert score.summary_ja == ""
+    assert score.opportunity_ja == ""
+    assert score.diy_friendly is None
+    assert score.diy_print_minutes is None
+    assert score.diy_material_cost_jpy is None
+    assert score.diy_required_extras == []
+    assert score.diy_score is None

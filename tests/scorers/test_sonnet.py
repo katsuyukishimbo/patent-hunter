@@ -65,6 +65,14 @@ def test_sonnet_parses_claude_cli_json_and_uses_safe_cwd():
                 "amazon_gap": True,
                 "review_signal": "wicks clog quickly",
                 "score": 99,
+                "short_title_ja": "🌱 自動給水ウィック",
+                "summary_ja": "毛細管で水を吸い上げ、詰まりやすい既存品の不満を構造で解決。",
+                "opportunity_ja": "月検索 11.8 万・既存品は詰まり不満",
+                "diy_friendly": True,
+                "diy_print_minutes": 45,
+                "diy_material_cost_jpy": 80,
+                "diy_required_extras": ["不織布フェルト x 1"],
+                "diy_score": 8,
             }
         ]
     )
@@ -77,6 +85,12 @@ def test_sonnet_parses_claude_cli_json_and_uses_safe_cwd():
 
     assert out.results[0].score == 10
     assert out.results[0].consumer_viable is True
+    assert out.results[0].short_title_ja == "🌱 自動給水ウィック"
+    assert out.results[0].diy_friendly is True
+    assert out.results[0].diy_print_minutes == 45
+    assert out.results[0].diy_material_cost_jpy == 80
+    assert out.results[0].diy_required_extras == ["不織布フェルト x 1"]
+    assert out.results[0].diy_score == 8
     assert out.results[0].error is None
     assert out.input_tokens == 500
     assert out.output_tokens == 200
@@ -159,6 +173,25 @@ def test_sonnet_handles_invalid_cli_wrapper_json():
         out = asyncio.run(scorer_sonnet.score_batch([_patent()]))
 
     assert out.results[0].error and "json_parse_error" in out.results[0].error
+
+
+def test_sonnet_new_fields_fall_back_when_missing():
+    result = json.dumps([{"patent_id": "8234811", "score": 8}])
+    proc = _fake_process(_cli_stdout(result))
+
+    with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+        out = asyncio.run(scorer_sonnet.score_batch([_patent()]))
+
+    row = out.results[0]
+    assert row.error is None
+    assert row.short_title_ja == ""
+    assert row.summary_ja == ""
+    assert row.opportunity_ja == ""
+    assert row.diy_friendly is None
+    assert row.diy_print_minutes is None
+    assert row.diy_material_cost_jpy is None
+    assert row.diy_required_extras == []
+    assert row.diy_score is None
 
 
 def test_sonnet_handles_invalid_result_json():

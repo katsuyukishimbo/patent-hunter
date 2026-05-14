@@ -6,6 +6,7 @@ Usage:
                                 [--vintage-years 12]
                                 [--score-threshold 7]
                                 [--max-cost 10.0]
+                                [--diy-only]
                                 [--discord-webhook URL]
                                 [--out-dir out]
 """
@@ -53,6 +54,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=float(os.environ.get("MAX_COST_USD", "10.0")),
         help="Maximum estimated spend in USD before stopping after a batch.",
+    )
+    run_p.add_argument(
+        "--diy-only",
+        action="store_true",
+        help="Adopt only patents both models marked as individual 3D-printable.",
     )
     run_p.add_argument(
         "--out-dir",
@@ -107,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         vintage_years=args.vintage_years,
         top_n=args.top_n,
         max_cost_usd=args.max_cost,
+        diy_only=args.diy_only,
         discord_webhook_url=args.discord_webhook
         or os.environ.get("DISCORD_WEBHOOK_URL")
         or None,

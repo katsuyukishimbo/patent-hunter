@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, List, Optional
 
-from .json_extract import extract_json_array
+from .json_extract import extract_json_array, score_result_kwargs
 from .prompts import SYSTEM_PROMPT, build_user_payload
 from ..models import Patent, ScoreResult
 from ..observability import emit
@@ -60,34 +60,7 @@ def _build_command(prompt: str, *, claude_bin: str) -> List[str]:
 
 def _result_from_json(obj: dict, patent_id: str, raw_text: str) -> ScoreResult:
     """Build a ScoreResult from one decoded JSON object."""
-    score_raw = obj.get("score", 0)
-    try:
-        score = int(score_raw)
-    except (TypeError, ValueError):
-        score = 0
-    return ScoreResult(
-        patent_id=str(obj.get("patent_id") or patent_id),
-        model="sonnet",
-        plain_english=str(obj.get("plain_english") or ""),
-        consumer_viable=_optional_bool(obj.get("consumer_viable")),
-        bom_estimate=str(obj.get("bom_estimate") or ""),
-        amazon_gap=_optional_bool(obj.get("amazon_gap")),
-        review_signal=str(obj.get("review_signal") or ""),
-        score=max(0, min(10, score)),
-        raw=raw_text,
-    )
-
-
-def _optional_bool(v: Any) -> Optional[bool]:
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, str):
-        lo = v.strip().lower()
-        if lo in {"true", "yes", "y", "1"}:
-            return True
-        if lo in {"false", "no", "n", "0"}:
-            return False
-    return None
+    return ScoreResult(model="sonnet", **score_result_kwargs(obj, patent_id, raw_text))
 
 
 def _safe_int(value: Any) -> int:

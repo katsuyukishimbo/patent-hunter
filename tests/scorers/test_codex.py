@@ -11,7 +11,23 @@ from tests.conftest import make_patent
 
 
 def test_codex_parses_subprocess_stdout():
-    payload = json.dumps([{"patent_id": "8234811", "score": 7, "consumer_viable": True}])
+    payload = json.dumps(
+        [
+            {
+                "patent_id": "8234811",
+                "score": 7,
+                "consumer_viable": True,
+                "short_title_ja": "🌱 自動給水ウィック",
+                "summary_ja": "毛細管で水を吸い上げ、詰まりやすい既存品の不満を構造で解決。",
+                "opportunity_ja": "月検索 11.8 万・既存品は詰まり不満",
+                "diy_friendly": True,
+                "diy_print_minutes": 45,
+                "diy_material_cost_jpy": 80,
+                "diy_required_extras": [],
+                "diy_score": 10,
+            }
+        ]
+    )
 
     async def fake_runner(argv, timeout):
         # Sanity: the argv should invoke `codex exec`.
@@ -26,6 +42,9 @@ def test_codex_parses_subprocess_stdout():
     )
     assert out.results[0].score == 7
     assert out.results[0].consumer_viable is True
+    assert out.results[0].short_title_ja == "🌱 自動給水ウィック"
+    assert out.results[0].diy_friendly is True
+    assert out.results[0].diy_score == 10
     assert out.invocations == 1
     assert out.cost_usd_estimate > 0
 
@@ -78,3 +97,23 @@ def test_codex_handles_non_json_output():
         scorer_codex.score_batch([make_patent(pid="8234811")], runner=fake_runner)
     )
     assert out.results[0].error and "json_parse_error" in out.results[0].error
+
+
+def test_codex_new_fields_fall_back_when_missing():
+    async def fake_runner(argv, timeout):
+        return json.dumps([{"patent_id": "8234811", "score": 8}])
+
+    out = asyncio.run(
+        scorer_codex.score_batch([make_patent(pid="8234811")], runner=fake_runner)
+    )
+
+    row = out.results[0]
+    assert row.error is None
+    assert row.short_title_ja == ""
+    assert row.summary_ja == ""
+    assert row.opportunity_ja == ""
+    assert row.diy_friendly is None
+    assert row.diy_print_minutes is None
+    assert row.diy_material_cost_jpy is None
+    assert row.diy_required_extras == []
+    assert row.diy_score is None

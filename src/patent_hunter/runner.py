@@ -33,6 +33,7 @@ class RunConfig:
     vintage_years: int = 12
     top_n: int = 10
     max_cost_usd: float = 10.0
+    diy_only: bool = False
     fetched_patents: Optional[List[Patent]] = None  # test hook
     sonnet_client: Optional[Any] = None  # test hook
     codex_runner: Optional[Callable[..., Any]] = None  # test hook
@@ -94,6 +95,7 @@ def _merge_scored(
     codex_results: List[ScoreResult],
     *,
     score_threshold: int,
+    diy_only: bool = False,
 ) -> List[ScoredPatent]:
     sonnet_idx = _index_by_id(sonnet_results)
     codex_idx = _index_by_id(codex_results)
@@ -115,6 +117,8 @@ def _merge_scored(
             and s.score >= score_threshold
             and c.score >= score_threshold
         )
+        if diy_only:
+            adopted = adopted and s.diy_friendly is True and c.diy_friendly is True
         scored.append(
             ScoredPatent(
                 patent=p,
@@ -428,6 +432,7 @@ async def run_async(cfg: RunConfig) -> tuple[List[ScoredPatent], RunStats]:
             all_sonnet,
             all_codex,
             score_threshold=cfg.score_threshold,
+            diy_only=cfg.diy_only,
         )
         _update_scored_stats(stats, partial_scored)
         budget_warning_emitted = _check_budget_or_raise(
@@ -444,6 +449,7 @@ async def run_async(cfg: RunConfig) -> tuple[List[ScoredPatent], RunStats]:
         all_sonnet,
         all_codex,
         score_threshold=cfg.score_threshold,
+        diy_only=cfg.diy_only,
     )
     _update_scored_stats(stats, scored)
     _record_partial_failure_warning(stats)
@@ -508,6 +514,7 @@ def write_outputs(
         top=top,
         stats=stats,
         score_threshold=cfg.score_threshold,
+        diy_only=cfg.diy_only,
     )
     report_path.write_text(report_html, encoding="utf-8")
 
