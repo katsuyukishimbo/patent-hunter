@@ -127,6 +127,7 @@ def score_result_kwargs(obj: dict[str, Any], patent_id: str, raw_text: str) -> d
         "short_title_ja": str(obj.get("short_title_ja") or ""),
         "summary_ja": str(obj.get("summary_ja") or ""),
         "opportunity_ja": str(obj.get("opportunity_ja") or ""),
+        "next_action_steps_ja": string_list(obj.get("next_action_steps_ja")),
         "consumer_viable": optional_bool(obj.get("consumer_viable")),
         "bom_estimate": str(obj.get("bom_estimate") or ""),
         "amazon_gap": optional_bool(obj.get("amazon_gap")),

@@ -44,6 +44,7 @@ class ScoreResult:
     short_title_ja: str = ""
     summary_ja: str = ""
     opportunity_ja: str = ""
+    next_action_steps_ja: list[str] = field(default_factory=list)
     consumer_viable: Optional[bool] = None
     bom_estimate: str = ""
     amazon_gap: Optional[bool] = None

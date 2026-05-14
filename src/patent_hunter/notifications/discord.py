@@ -82,6 +82,22 @@ def _diy_badge(scored: ScoredPatent) -> str:
     return f"🔧 個人 3D プリント OK · {minutes}分 · ¥{cost}"
 
 
+def _preferred_next_steps(scored: ScoredPatent) -> list[str]:
+    """Return a display-ready three-step action list when either scorer has one."""
+    fallback: list[str] = []
+    for result in (scored.sonnet, scored.codex):
+        steps = [
+            str(step).strip()
+            for step in result.next_action_steps_ja
+            if str(step).strip()
+        ]
+        if len(steps) >= 3:
+            return steps[:3]
+        if steps and not fallback:
+            fallback = steps
+    return fallback[:3]
+
+
 def _field_for_patent(index: int, scored: ScoredPatent) -> dict[str, Any]:
     patent = scored.patent
     title = _preferred_ja(scored, "short_title_ja", patent.title)
@@ -94,13 +110,20 @@ def _field_for_patent(index: int, scored: ScoredPatent) -> dict[str, Any]:
     opportunity = _preferred_ja(scored, "opportunity_ja", "不明")
     bom = _preferred_bom(scored)
     lines = [
-        summary or "概要なし",
+        _truncate(summary or "概要なし", 180),
         f"💡 売り筋: {opportunity or '不明'}",
         f"🏭 製造原価: {bom} (≒ ¥{usd_range_to_jpy(bom)})",
     ]
     badge = _diy_badge(scored)
     if badge:
         lines.append(badge)
+    next_steps = _preferred_next_steps(scored)
+    if next_steps:
+        lines.append("🚀 次の一歩:")
+        lines.extend(
+            f"{step_index}. {_truncate(step, 120)}"
+            for step_index, step in enumerate(next_steps, start=1)
+        )
     lines.append(f"🔗 [特許リンク]({_google_patents_url(patent.patent_id)})")
     value = "\n".join(lines)
     return {

@@ -24,6 +24,7 @@ def test_score_result_new_fields_have_safe_defaults() -> None:
     assert score.short_title_ja == ""
     assert score.summary_ja == ""
     assert score.opportunity_ja == ""
+    assert score.next_action_steps_ja == []
     assert score.diy_friendly is None
     assert score.diy_print_minutes is None
     assert score.diy_material_cost_jpy is None

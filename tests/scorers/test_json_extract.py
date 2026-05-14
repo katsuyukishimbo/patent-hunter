@@ -47,6 +47,7 @@ def test_score_result_kwargs_normalizes_new_fields():
         "short_title_ja": "🔌 配線留め",
         "summary_ja": "径違いのケーブルを工具なしで固定する。",
         "opportunity_ja": "月検索 6.4 万・既存品は外れ不満",
+        "next_action_steps_ja": ["Onshape で 30 分", "Etsy で $8", "STL 販売"],
         "diy_friendly": "true",
         "diy_print_minutes": 5,
         "diy_material_cost_jpy": 9999,
@@ -59,6 +60,11 @@ def test_score_result_kwargs_normalizes_new_fields():
     assert out["score"] == 10
     assert out["consumer_viable"] is True
     assert out["short_title_ja"] == "🔌 配線留め"
+    assert out["next_action_steps_ja"] == [
+        "Onshape で 30 分",
+        "Etsy で $8",
+        "STL 販売",
+    ]
     assert out["diy_friendly"] is True
     assert out["diy_print_minutes"] == 10
     assert out["diy_material_cost_jpy"] == 2000

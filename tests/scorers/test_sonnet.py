@@ -68,6 +68,11 @@ def test_sonnet_parses_claude_cli_json_and_uses_safe_cwd():
                 "short_title_ja": "🌱 自動給水ウィック",
                 "summary_ja": "毛細管で水を吸い上げ、詰まりやすい既存品の不満を構造で解決。",
                 "opportunity_ja": "月検索 11.8 万・既存品は詰まり不満",
+                "next_action_steps_ja": [
+                    "Fusion 360 で 60 分・PETG で 30 分プリント・材料費 ¥50",
+                    "Etsy で $8 受注生産・利益率 80%・在庫リスク 0",
+                    "月 10 件売れたら Printables で STL ファイル販売も追加",
+                ],
                 "diy_friendly": True,
                 "diy_print_minutes": 45,
                 "diy_material_cost_jpy": 80,
@@ -86,6 +91,8 @@ def test_sonnet_parses_claude_cli_json_and_uses_safe_cwd():
     assert out.results[0].score == 10
     assert out.results[0].consumer_viable is True
     assert out.results[0].short_title_ja == "🌱 自動給水ウィック"
+    assert len(out.results[0].next_action_steps_ja) == 3
+    assert "Etsy" in out.results[0].next_action_steps_ja[1]
     assert out.results[0].diy_friendly is True
     assert out.results[0].diy_print_minutes == 45
     assert out.results[0].diy_material_cost_jpy == 80
@@ -187,6 +194,7 @@ def test_sonnet_new_fields_fall_back_when_missing():
     assert row.short_title_ja == ""
     assert row.summary_ja == ""
     assert row.opportunity_ja == ""
+    assert row.next_action_steps_ja == []
     assert row.diy_friendly is None
     assert row.diy_print_minutes is None
     assert row.diy_material_cost_jpy is None

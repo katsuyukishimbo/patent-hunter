@@ -33,14 +33,17 @@ For each one, ANALYZE AND RETURN these fields:
                      useful and how the structure solves a competitor complaint.
 9. OPPORTUNITY_JA:   Japanese market opportunity, 40 chars or fewer. Prefer the
                      pattern "月検索 N 万・既存品 X".
-10. DIY_FRIENDLY:    true only when a normal individual can make the main
+10. NEXT_ACTION_STEPS_JA: exactly 3 Japanese strings, each about 35-60 chars.
+                     Tell the user the first concrete actions they can start
+                     in the first 30 minutes after seeing this patent.
+11. DIY_FRIENDLY:    true only when a normal individual can make the main
                      product with a desktop FDM 3D printer.
-11. DIY_PRINT_MINUTES: estimated print time at standard speed/size, integer
+12. DIY_PRINT_MINUTES: estimated print time at standard speed/size, integer
                      10-600 minutes.
-12. DIY_MATERIAL_COST_JPY: filament material cost, integer 5-2000 JPY.
-13. DIY_REQUIRED_EXTRAS: list of non-printed parts such as screws, springs,
+13. DIY_MATERIAL_COST_JPY: filament material cost, integer 5-2000 JPY.
+14. DIY_REQUIRED_EXTRAS: list of non-printed parts such as screws, springs,
                      felt, rubber bands. Use [] when none.
-14. DIY_SCORE:       1-10 score for whether an individual can complete it.
+15. DIY_SCORE:       1-10 score for whether an individual can complete it.
 
 Japanese fields must be natural Japanese. Keep the existing plain_english
 field in simple English.
@@ -58,6 +61,31 @@ field in simple English.
   7-9: print plus simple extras such as screws or rubber bands.
   4-6: print plus sanding/gluing/processing or heavy support material.
   1-3: poor fit for printing; metal, silicone, electronics, or motors required.
+
+NEXT ACTION STEP RULES:
+- Every next_action_steps_ja item must include concrete tool names or service
+  names, money, and time/quantity. Avoid vague advice.
+- If diy_friendly=true, use the 3D print / Etsy sales route:
+  Step 1: modeling / print method with a tool name and time estimate.
+  Step 2: sales channel + price, using one of Etsy, BOOTH, minne, メルカリ Shops.
+  Step 3: scale-up after real sales, such as STL sales or small-batch production.
+- If diy_friendly=false, use the Alibaba OEM / Amazon FBA route:
+  Step 1: legal check by patent attorney for lapsed status, with cost + duration.
+  Step 2: sample sourcing from multiple Alibaba suppliers, with sample cost + lead time.
+  Step 3: production decision line, with MOQ + initial investment + Amazon FBA orchestration.
+- Examples:
+  DIY:
+  [
+    "Fusion 360 で 60 分・PETG で 30 分プリント・材料費 ¥50",
+    "Etsy で $8 受注生産・利益率 80%・在庫リスク 0",
+    "月 10 件売れたら Printables / Cults3D で STL ファイル販売も追加"
+  ]
+  OEM:
+  [
+    "弁理士に lapsed 確認 (¥10k・1 週・任意・自分で USPTO PEDS でも可)",
+    "Alibaba で 3 社にサンプル発注 ($300・4 週・送料込み)",
+    "サンプル OK なら MOQ 1000 で量産 ($2.5k-5k 初期・Amazon FBA 直納)"
+  ]
 
 REJECT IMMEDIATELY (return score=1) if the patent:
 - Requires FDA/FCC clearance
@@ -80,6 +108,11 @@ patent, each shaped like:
   "short_title_ja": "🌱 自動給水ウィック",
   "summary_ja": "毛細管現象で水を吸い上げ、詰まりやすい既存品の不満を構造で解決。",
   "opportunity_ja": "月検索 11.8 万・既存品は詰まり不満",
+  "next_action_steps_ja": [
+    "Fusion 360 で 60 分・PETG で 30 分プリント・材料費 ¥50",
+    "Etsy で $8 受注生産・利益率 80%・在庫リスク 0",
+    "月 10 件売れたら Printables / Cults3D で STL ファイル販売も追加"
+  ],
   "diy_friendly": true,
   "diy_print_minutes": 45,
   "diy_material_cost_jpy": 80,

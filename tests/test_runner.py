@@ -33,6 +33,13 @@ def _extract_payload(text):
     return json.loads(text[idx + len(marker) :])
 
 
+NEXT_STEPS = [
+    "Onshape で 30 分モデリング・PETG で 35 分印刷・材料費 ¥35",
+    "Etsy で $8 受注生産・クリックポスト発送で在庫 0",
+    "月 10 件売れたら Printables で STL $4 販売も追加",
+]
+
+
 def _build_sonnet_runner(scores_by_id):
     async def runner(argv, timeout):
         prompt = argv[argv.index("-p") + 1]
@@ -49,6 +56,7 @@ def _build_sonnet_runner(scores_by_id):
                 "short_title_ja": f"🔧 特許{pid}",
                 "summary_ja": f"特許{pid}の日本語サマリ。既存品の不満を構造で解決。",
                 "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                "next_action_steps_ja": NEXT_STEPS,
                 "diy_friendly": scores_by_id[pid][2][0],
                 "diy_print_minutes": 45,
                 "diy_material_cost_jpy": 80,
@@ -86,6 +94,7 @@ def _build_sonnet_runner_with_missing(scores_by_id, missing_ids: set[str]):
                 "short_title_ja": f"🔧 特許{pid}",
                 "summary_ja": f"特許{pid}の日本語サマリ。既存品の不満を構造で解決。",
                 "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                "next_action_steps_ja": NEXT_STEPS,
                 "diy_friendly": scores_by_id[pid][2][0],
                 "diy_print_minutes": 45,
                 "diy_material_cost_jpy": 80,
@@ -126,6 +135,7 @@ def _build_codex_runner(scores_by_id):
                     "short_title_ja": f"🔧 特許{pid}",
                     "summary_ja": f"Codex 特許{pid}の日本語サマリ。",
                     "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                    "next_action_steps_ja": NEXT_STEPS,
                     "diy_friendly": scores_by_id[pid][2][1],
                     "diy_print_minutes": 50,
                     "diy_material_cost_jpy": 90,
@@ -170,10 +180,13 @@ def test_runner_adopts_only_when_both_models_pass(tmp_path: Path):
     assert len(rows) == 4
     adopted_ids = {r["patent"]["patent_id"] for r in rows if r["adopted"]}
     assert adopted_ids == {"A", "D"}
+    assert rows[0]["sonnet"]["next_action_steps_ja"] == NEXT_STEPS
 
     html = paths["report"].read_text()
     assert "Patent Hunter" in html
     assert "badge-adopted" in html
+    assert "🚀 次の一歩" in html
+    assert "Onshape で 30 分モデリング" in html
     assert "US A" in html or "USA" in html  # link present
 
 

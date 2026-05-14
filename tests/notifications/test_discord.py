@@ -24,10 +24,16 @@ def _scored(
     short_title_ja: str = "🔧 便利クリップ",
     summary_ja: str = "工具なしで固定でき、外れやすい既存品の不満を爪構造で解決。",
     opportunity_ja: str = "月検索 1.0 万・既存品は外れ不満",
+    next_action_steps_ja: list[str] | None = None,
     diy_friendly: bool = True,
     adopted: bool = True,
 ) -> ScoredPatent:
     patent = make_patent(pid, title=title)
+    steps = next_action_steps_ja or [
+        "Onshape で 30 分モデリング・PETG で 35 分印刷・材料費 ¥35",
+        "Etsy で $8 受注生産・クリックポスト発送で在庫 0",
+        "月 10 件売れたら Printables で STL $4 販売も追加",
+    ]
     sonnet = ScoreResult(
         patent_id=pid,
         model="sonnet",
@@ -40,6 +46,7 @@ def _scored(
         short_title_ja=short_title_ja,
         summary_ja=summary_ja,
         opportunity_ja=opportunity_ja,
+        next_action_steps_ja=steps,
         diy_friendly=diy_friendly,
         diy_print_minutes=45,
         diy_material_cost_jpy=80,
@@ -58,6 +65,7 @@ def _scored(
         short_title_ja=short_title_ja,
         summary_ja=summary_ja,
         opportunity_ja=opportunity_ja,
+        next_action_steps_ja=steps,
         diy_friendly=diy_friendly,
         diy_print_minutes=50,
         diy_material_cost_jpy=90,
@@ -98,6 +106,10 @@ def test_format_embed_builds_expected_payload() -> None:
     assert "💡 売り筋: 月検索 1.0 万・既存品は外れ不満" in field["value"]
     assert "🏭 製造原価: $1-2 (≒ ¥150-300 円)" in field["value"]
     assert "🔧 個人 3D プリント OK · 45分 · ¥80" in field["value"]
+    assert "🚀 次の一歩:" in field["value"]
+    assert "1. Onshape で 30 分モデリング" in field["value"]
+    assert "2. Etsy で $8 受注生産" in field["value"]
+    assert "3. 月 10 件売れたら Printables" in field["value"]
     assert "🔗 [特許リンク](https://patents.google.com/patent/US1234567A)" in field[
         "value"
     ]
@@ -225,6 +237,11 @@ def test_runner_emits_notification_failed_without_failing_run(
                             "short_title_ja": "🔧 特許A",
                             "summary_ja": "特許Aの日本語サマリ。既存品の不満を構造で解決。",
                             "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                            "next_action_steps_ja": [
+                                "Onshape で 30 分モデリング・PETG で 35 分印刷・材料費 ¥35",
+                                "Etsy で $8 受注生産・クリックポスト発送で在庫 0",
+                                "月 10 件売れたら Printables で STL $4 販売も追加",
+                            ],
                             "diy_friendly": True,
                             "diy_print_minutes": 45,
                             "diy_material_cost_jpy": 80,
@@ -252,6 +269,11 @@ def test_runner_emits_notification_failed_without_failing_run(
                     "short_title_ja": "🔧 特許A",
                     "summary_ja": "Codex 特許Aの日本語サマリ。",
                     "opportunity_ja": "月検索 1.0 万・既存品は不満あり",
+                    "next_action_steps_ja": [
+                        "Onshape で 30 分モデリング・PETG で 35 分印刷・材料費 ¥35",
+                        "Etsy で $8 受注生産・クリックポスト発送で在庫 0",
+                        "月 10 件売れたら Printables で STL $4 販売も追加",
+                    ],
                     "diy_friendly": True,
                     "diy_print_minutes": 45,
                     "diy_material_cost_jpy": 80,

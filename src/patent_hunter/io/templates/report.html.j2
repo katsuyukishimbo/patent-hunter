@@ -12,6 +12,8 @@
   .badge-shortlist { background: #6c757d; }
   .badge-diy { background: #0d6efd; }
   .small-meta { font-size: 0.85rem; color: #555; }
+  .next-steps { font-size: 0.92rem; }
+  .next-steps ol { padding-left: 1.25rem; }
   code.pid { font-size: 0.95rem; }
 </style>
 </head>
@@ -64,6 +66,7 @@
       {% set summary = sp.sonnet.summary_ja or sp.codex.summary_ja or sp.sonnet.plain_english or sp.codex.plain_english %}
       {% set opportunity = sp.sonnet.opportunity_ja or sp.codex.opportunity_ja %}
       {% set diy = sp.sonnet if sp.sonnet.diy_friendly else sp.codex %}
+      {% set next_steps = sp.sonnet.next_action_steps_ja or sp.codex.next_action_steps_ja %}
       <tr>
         <td>{{ loop.index }}</td>
         <td>
@@ -116,6 +119,21 @@
           {% endif %}
         </td>
       </tr>
+      {% if next_steps %}
+      <tr class="table-light">
+        <td></td>
+        <td colspan="11">
+          <div class="next-steps">
+            <strong>🚀 次の一歩</strong>
+            <ol class="mb-0 mt-1">
+              {% for step in next_steps[:3] %}
+              <li>{{ step }}</li>
+              {% endfor %}
+            </ol>
+          </div>
+        </td>
+      </tr>
+      {% endif %}
       {% endfor %}
     </tbody>
   </table>

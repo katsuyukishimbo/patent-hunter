@@ -98,6 +98,8 @@ Patent Hunter now asks both scoring models for Japanese presentation fields
 judgement. Reports and Discord notifications show the Japanese title/summary,
 market opportunity, and a 🔧 badge when a patent looks practical for an
 individual desktop FDM printer.
+Each scored patent also includes `next_action_steps_ja`: three concrete
+Japanese next steps for either 3D-print/Etsy validation or Alibaba/FBA OEM.
 
 Use `--diy-only` to adopt only patents where both models return
 `diy_friendly=true`:
