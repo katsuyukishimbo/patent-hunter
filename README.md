@@ -3,9 +3,9 @@
 > Find commercially viable expired US patents — automatically, with two LLMs cross-checking each other.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests](https://github.com/katsuyukishimbo/patent-hunter/actions/workflows/test.yml/badge.svg)](https://github.com/katsuyukishimbo/patent-hunter/actions/workflows/test.yml)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)
-![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
 
 There are **4.2M+ expired US utility patents** sitting in the public domain. Each one is essentially a free manufacturing manual — dimensions, tolerances, materials, assembly — written when someone thought it was worth $15,000 in legal fees to protect. Nobody re-reads them. Patent Hunter does.
 
@@ -60,6 +60,22 @@ Public Datasets in BigQuery.
    ```
 6. Optional service-account fallback: set `GOOGLE_APPLICATION_CREDENTIALS` to
    a JSON key path when ADC is not available.
+
+### Continuous Integration
+
+- `.github/workflows/test.yml` runs unit tests and TypeScript typecheck
+  on every push/PR to `main`. LLM components remain mocked here so the
+  CI does not depend on Claude CLI / Codex CLI being installed on the
+  runner.
+- `.github/workflows/integration.yml` is **manual-only** (`workflow_dispatch`).
+  It runs `tests/integration/` against a real BigQuery project. Required
+  repository secrets:
+  - `GCP_SA_KEY_JSON`: service account JSON with `BigQuery Data Viewer`
+    on `bigquery-public-data` / read access for `patents-public-data`.
+  - `GCP_PROJECT_ID`: the GCP project ID that holds the BigQuery quota.
+
+Set these via `gh secret set GCP_SA_KEY_JSON < sa-key.json` and
+`gh secret set GCP_PROJECT_ID -b "patent-hunter-2026"`.
 
 ### Discord notifications (optional)
 

@@ -7,6 +7,7 @@ Exists because the shell harness blocks invocations under .venv/bin/.
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import os
 import sys
@@ -21,4 +22,19 @@ sys.path.insert(0, str(SRC))
 os.chdir(ROOT)
 
 m = importlib.import_module("py" + "test")
-raise SystemExit(m.main(["-q", "tests"]))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run Patent Hunter tests.")
+    parser.add_argument(
+        "--integration",
+        action="store_true",
+        help="Run only tests marked integration.",
+    )
+    args = parser.parse_args(argv)
+
+    marker = "integration" if args.integration else "not integration"
+    return m.main(["-q", "tests", "-m", marker])
+
+
+raise SystemExit(main())

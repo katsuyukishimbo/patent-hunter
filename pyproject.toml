@@ -38,3 +38,7 @@ packages = ["src/patent_hunter"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that hit real external services (BigQuery, Claude CLI). Excluded by default. Run with `pytest -m integration`.",
+]
+addopts = "-m 'not integration'"
