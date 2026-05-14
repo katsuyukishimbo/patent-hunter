@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
-from .fetchers.patentsview import FetchConfig, fetch_patents
+from .fetchers.bigquery import FetchConfig, fetch_patents
 from .io.report import render_report
 from .models import Patent, RunStats, ScoredPatent, ScoreResult
 from .scorers.codex import score_batch as codex_score_batch

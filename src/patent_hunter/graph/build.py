@@ -52,11 +52,11 @@ def graph_config(week: str | IsoWeek) -> dict[str, dict[str, str]]:
 def build_state_graph(runtime: GraphRuntime | None = None):
     runtime = runtime or GraphRuntime()
     graph = StateGraph(PatentHunterState)
-    graph.add_node("fetch", partial(fetch_node, runtime=runtime))
-    graph.add_node("score_sonnet", partial(score_sonnet_node, runtime=runtime))
-    graph.add_node("score_codex", partial(score_codex_node, runtime=runtime))
-    graph.add_node("verify", partial(verify_node, runtime=runtime))
-    graph.add_node("report", partial(report_node, runtime=runtime))
+    graph.add_node("fetch", partial(fetch_node, gr=runtime))
+    graph.add_node("score_sonnet", partial(score_sonnet_node, gr=runtime))
+    graph.add_node("score_codex", partial(score_codex_node, gr=runtime))
+    graph.add_node("verify", partial(verify_node, gr=runtime))
+    graph.add_node("report", partial(report_node, gr=runtime))
 
     graph.add_edge(START, "fetch")
     graph.add_edge("fetch", "score_sonnet")
@@ -91,8 +91,8 @@ def dryrun_runtime(
 
     from scripts.dryrun import (  # local import avoids test-time side effects.
         FIXTURE_PATENTS,
-        _FakeAnthropic,
         _fake_codex_runner,
+        _fake_sonnet_runner,
     )
 
     return GraphRuntime(
@@ -101,6 +101,6 @@ def dryrun_runtime(
         max_per_category=max_per_category,
         top_n=top_n,
         fetched_patents=list(FIXTURE_PATENTS),
-        sonnet_client=_FakeAnthropic(),
+        sonnet_client=_fake_sonnet_runner,
         codex_runner=_fake_codex_runner,
     )

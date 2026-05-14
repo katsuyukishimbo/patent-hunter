@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -74,9 +75,11 @@ def main(argv: list[str] | None = None) -> int:
 
     week: IsoWeek = parse_iso_week(args.week) if args.week else previous_iso_week()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    claude_bin = os.environ.get("CLAUDE_BIN", "claude")
+    if shutil.which(claude_bin) is None:
         print(
-            "ERROR: ANTHROPIC_API_KEY is not set. Copy .env.example to .env and fill it in.",
+            f"ERROR: Claude Code CLI binary not found: {claude_bin}. "
+            "Install/login to Claude Code or set CLAUDE_BIN.",
             file=sys.stderr,
         )
         return 1

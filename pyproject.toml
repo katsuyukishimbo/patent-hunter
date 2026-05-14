@@ -1,14 +1,14 @@
 [project]
 name = "patent_hunter"
 version = "0.1.0"
-description = "Phase 1 CLI: fetch expired US utility patents and score commercial viability with Sonnet x Codex in parallel."
+description = "Phase 1 CLI: fetch expired US utility patents and score commercial viability with Claude CLI x Codex in parallel."
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "katsuyuki-shimbo" }]
 
 dependencies = [
-    "anthropic>=0.39.0",
+    "google-cloud-bigquery>=3.21.0",
     "httpx>=0.27.0",
     "jinja2>=3.1.4",
     "langgraph>=0.2.0",

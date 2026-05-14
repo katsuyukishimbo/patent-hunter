@@ -102,7 +102,11 @@ async def test_scorer_nodes_run_in_parallel(
 
 
 def test_graph_dryrun_scores_match_existing_runner(tmp_path: Path) -> None:
-    from scripts.dryrun import FIXTURE_PATENTS, _FakeAnthropic, _fake_codex_runner
+    from scripts.dryrun import (
+        FIXTURE_PATENTS,
+        _fake_codex_runner,
+        _fake_sonnet_runner,
+    )
 
     week = IsoWeek(2026, 19)
     graph_out = tmp_path / "graph"
@@ -121,7 +125,7 @@ def test_graph_dryrun_scores_match_existing_runner(tmp_path: Path) -> None:
             max_per_category=10,
             top_n=10,
             fetched_patents=list(FIXTURE_PATENTS),
-            sonnet_client=_FakeAnthropic(),
+            sonnet_client=_fake_sonnet_runner,
             codex_runner=_fake_codex_runner,
         )
     )

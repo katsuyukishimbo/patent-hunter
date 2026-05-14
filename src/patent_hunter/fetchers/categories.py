@@ -1,9 +1,9 @@
 """CPC (Cooperative Patent Classification) code prefixes per target category.
 
 Why CPC prefixes (not full codes):
-  PatentsView's /patents endpoint matches CPC subclasses cheaply with a
-  `_begins` operator, so a 4-character prefix gives wide-but-cheap recall.
-  The LLM scorer is the precision filter; we only need decent recall here.
+  Google Patents BigQuery can apply STARTS_WITH over CPC codes cheaply, so a
+  4-character prefix gives wide-but-cheap recall. The LLM scorer is the
+  precision filter; we only need decent recall here.
 
 Sources used to pick these codes:
   - kitchen:  A47J ("kitchen equipment, coffee mills, ..."), A47G (household

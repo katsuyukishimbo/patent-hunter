@@ -1,17 +1,23 @@
-"""Anthropic (Sonnet) scorer.
+"""Claude Code CLI scorer for the historical "Sonnet" judge role.
 
-The official anthropic Python SDK is synchronous-only on the simple call
-path, so we wrap the blocking call in `asyncio.to_thread` to compose with
-the Codex scorer in `runner.py`.
+The scorer calls the local ``claude`` binary as a subprocess instead of a
+direct API client. Claude Code chooses the configured default model (Opus 4.7
+by default for the user's Max subscription), while this module keeps the
+existing runner contract and ``model="sonnet"`` score labels.
+
+Important cost guard: subprocesses run with ``cwd="/tmp"`` so Claude Code does
+not ingest project-level CLAUDE.md, .claude/rules, or memory files as context.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import shlex
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, Awaitable, Callable, List, Optional
 
 from .json_extract import extract_json_array
 from .prompts import SYSTEM_PROMPT, build_user_payload
@@ -19,11 +25,11 @@ from ..models import Patent, ScoreResult
 
 logger = logging.getLogger(__name__)
 
-# Sonnet 4.6 public pricing (per https://docs.anthropic.com/, as of 2026-05).
-# These are the constants the scorer uses to *estimate* spend for run.log.
-# They are intentionally pessimistic; real billing wins.
-SONNET_INPUT_USD_PER_MTOK = 3.0
-SONNET_OUTPUT_USD_PER_MTOK = 15.0
+CLAUDE_SUBPROCESS_CWD = "/tmp"
+CLAUDE_TIMEOUT_SECONDS = 180.0
+
+RunnerOutput = str | tuple[str, str, int]
+Runner = Callable[[List[str], float], Awaitable[RunnerOutput]]
 
 
 @dataclass
@@ -32,6 +38,19 @@ class SonnetScoreBatch:
     input_tokens: int
     output_tokens: int
     cost_usd: float
+
+
+@dataclass
+class _ClaudeCliResult:
+    result_text: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    is_error: bool
+
+
+def _build_command(prompt: str, *, claude_bin: str) -> List[str]:
+    return [claude_bin, "-p", prompt, "--output-format=json"]
 
 
 def _result_from_json(obj: dict, patent_id: str, raw_text: str) -> ScoreResult:
@@ -54,7 +73,7 @@ def _result_from_json(obj: dict, patent_id: str, raw_text: str) -> ScoreResult:
     )
 
 
-def _optional_bool(v) -> Optional[bool]:
+def _optional_bool(v: Any) -> Optional[bool]:
     if isinstance(v, bool):
         return v
     if isinstance(v, str):
@@ -66,77 +85,193 @@ def _optional_bool(v) -> Optional[bool]:
     return None
 
 
-def _build_client():
-    """Build an anthropic.Anthropic() instance lazily.
-
-    Importing inside the function keeps `pytest` happy even without the
-    package installed; tests use the injectable client interface below.
-    """
-    import anthropic  # local import on purpose
-
-    return anthropic.Anthropic()
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
-def score_batch_sync(
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _error_batch(
     patents: List[Patent],
     *,
-    client=None,
-    model: Optional[str] = None,
+    error: str,
+    raw: str = "",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cost_usd: float = 0.0,
 ) -> SonnetScoreBatch:
-    """Score one batch synchronously. Used directly by tests."""
+    return SonnetScoreBatch(
+        results=[
+            ScoreResult(patent_id=p.patent_id, model="sonnet", raw=raw, error=error)
+            for p in patents
+        ],
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost_usd,
+    )
+
+
+def _decode_cli_response(stdout: str) -> _ClaudeCliResult:
+    try:
+        obj = json.loads(stdout.strip())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid Claude CLI JSON: {exc}") from exc
+    if not isinstance(obj, dict):
+        raise ValueError(f"Claude CLI JSON was {type(obj).__name__}, expected object")
+
+    usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
+    result = obj.get("result")
+    return _ClaudeCliResult(
+        result_text="" if result is None else str(result),
+        input_tokens=_safe_int(usage.get("input_tokens")),
+        output_tokens=_safe_int(usage.get("output_tokens")),
+        cost_usd=_safe_float(obj.get("total_cost_usd")),
+        is_error=bool(obj.get("is_error")),
+    )
+
+
+async def _read_or_empty(stream: Any) -> bytes:
+    if stream is None:
+        return b""
+    return await stream.read()
+
+
+async def _run_claude(
+    argv: List[str], timeout: float, *, cwd: str = CLAUDE_SUBPROCESS_CWD
+) -> tuple[str, str, int]:
+    """Run Claude Code and return stdout, stderr, and return code."""
+    logger.debug("Claude argv: %s", " ".join(shlex.quote(a) for a in argv))
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout_b, stderr_b, waited_rc = await asyncio.wait_for(
+            asyncio.gather(
+                _read_or_empty(proc.stdout),
+                _read_or_empty(proc.stderr),
+                proc.wait(),
+            ),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise
+
+    returncode = proc.returncode
+    if returncode is None:
+        returncode = waited_rc if isinstance(waited_rc, int) else 0
+    return (
+        (stdout_b or b"").decode("utf-8", "replace"),
+        (stderr_b or b"").decode("utf-8", "replace"),
+        int(returncode),
+    )
+
+
+async def _invoke_runner(
+    runner: Runner | None,
+    argv: List[str],
+    timeout: float,
+) -> tuple[str, str, int]:
+    if runner is None:
+        return await _run_claude(argv, timeout)
+
+    out = await runner(argv, timeout)
+    if isinstance(out, tuple):
+        stdout, stderr, returncode = out
+        return stdout, stderr, returncode
+    return out, "", 0
+
+
+async def score_batch(
+    patents: List[Patent],
+    *,
+    client: Runner | None = None,
+    model: Optional[str] = None,
+    runner: Runner | None = None,
+    claude_bin: Optional[str] = None,
+    timeout: float = CLAUDE_TIMEOUT_SECONDS,
+) -> SonnetScoreBatch:
+    """Score one batch with the local Claude Code CLI.
+
+    ``client`` is retained as a backwards-compatible injection slot used by
+    runner/graph fixtures; it now means an async subprocess-style runner rather
+    than a direct API client. ``model`` is accepted for the historical signature but
+    ignored because Claude Code owns model selection.
+    """
     if not patents:
         return SonnetScoreBatch(results=[], input_tokens=0, output_tokens=0, cost_usd=0.0)
 
-    client = client or _build_client()
-    model_id = model or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    if model:
+        logger.debug("Ignoring model=%s; Claude Code CLI controls model selection", model)
+
+    effective_runner = runner or client
+    claude_bin = claude_bin or os.environ.get("CLAUDE_BIN", "claude")
     user_text = build_user_payload(patents)
+    full_prompt = f"{SYSTEM_PROMPT}\n\n---\n\n{user_text}"
+    argv = _build_command(full_prompt, claude_bin=claude_bin)
 
-    logger.info("Sonnet: scoring batch of %d patents with model=%s", len(patents), model_id)
-    message = client.messages.create(
-        model=model_id,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_text}],
-    )
+    logger.info("Claude CLI: scoring batch of %d patents", len(patents))
+    try:
+        stdout, stderr, returncode = await _invoke_runner(effective_runner, argv, timeout)
+    except (asyncio.TimeoutError, RuntimeError, FileNotFoundError) as exc:
+        logger.warning("Claude CLI invocation failed: %s", exc)
+        return _error_batch(patents, error=f"invocation_error: {exc}")
 
-    # The SDK returns a content list of blocks. Join text blocks.
-    text = ""
-    for block in getattr(message, "content", []) or []:
-        # Each block has .type and .text on the SDK; on dicts it has ["type"].
-        b_text = getattr(block, "text", None)
-        if b_text is None and isinstance(block, dict):
-            b_text = block.get("text")
-        if b_text:
-            text += b_text
+    try:
+        cli_result = _decode_cli_response(stdout)
+    except ValueError as exc:
+        message = f"json_parse_error: {exc}"
+        if returncode != 0:
+            stderr_tail = stderr.strip()[:500]
+            message = (
+                f"invocation_error: claude failed (rc={returncode}): "
+                f"{stderr_tail or str(exc)}"
+            )
+        logger.warning("Claude CLI returned invalid wrapper JSON: %s", message)
+        return _error_batch(patents, error=message, raw=stdout)
 
-    usage = getattr(message, "usage", None)
-    input_tokens = getattr(usage, "input_tokens", 0) or 0
-    output_tokens = getattr(usage, "output_tokens", 0) or 0
-    cost_usd = (
-        input_tokens / 1_000_000 * SONNET_INPUT_USD_PER_MTOK
-        + output_tokens / 1_000_000 * SONNET_OUTPUT_USD_PER_MTOK
-    )
+    if returncode != 0 or cli_result.is_error:
+        detail = cli_result.result_text.strip() or stderr.strip() or "unknown error"
+        prefix = (
+            f"invocation_error: claude failed (rc={returncode})"
+            if returncode != 0
+            else "claude_cli_error"
+        )
+        logger.warning("Claude CLI reported failure: %s: %s", prefix, detail)
+        return _error_batch(
+            patents,
+            error=f"{prefix}: {detail}",
+            raw=cli_result.result_text,
+            input_tokens=cli_result.input_tokens,
+            output_tokens=cli_result.output_tokens,
+            cost_usd=cli_result.cost_usd,
+        )
 
     by_id = {p.patent_id: p for p in patents}
     results: List[ScoreResult] = []
     try:
-        items = extract_json_array(text)
+        items = extract_json_array(cli_result.result_text)
     except ValueError as exc:
-        logger.warning("Sonnet returned non-JSON output: %s", exc)
-        for p in patents:
-            results.append(
-                ScoreResult(
-                    patent_id=p.patent_id,
-                    model="sonnet",
-                    raw=text,
-                    error=f"json_parse_error: {exc}",
-                )
-            )
-        return SonnetScoreBatch(
-            results=results,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost_usd,
+        logger.warning("Claude CLI result field was non-JSON: %s", exc)
+        return _error_batch(
+            patents,
+            error=f"json_parse_error: {exc}",
+            raw=cli_result.result_text,
+            input_tokens=cli_result.input_tokens,
+            output_tokens=cli_result.output_tokens,
+            cost_usd=cli_result.cost_usd,
         )
 
     seen: set[str] = set()
@@ -145,36 +280,24 @@ def score_batch_sync(
             continue
         pid = str(obj.get("patent_id") or "")
         if pid not in by_id:
-            # Some models echo their own id; try to align by position later.
             continue
-        results.append(_result_from_json(obj, pid, text))
+        results.append(_result_from_json(obj, pid, cli_result.result_text))
         seen.add(pid)
 
-    # Fill in any missing patents so the runner can match 1:1.
     for p in patents:
         if p.patent_id not in seen:
             results.append(
                 ScoreResult(
                     patent_id=p.patent_id,
                     model="sonnet",
-                    raw=text,
+                    raw=cli_result.result_text,
                     error="missing_from_batch_response",
                 )
             )
 
     return SonnetScoreBatch(
         results=results,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        input_tokens=cli_result.input_tokens,
+        output_tokens=cli_result.output_tokens,
+        cost_usd=cli_result.cost_usd,
     )
-
-
-async def score_batch(
-    patents: List[Patent],
-    *,
-    client=None,
-    model: Optional[str] = None,
-) -> SonnetScoreBatch:
-    """Async wrapper around the blocking SDK call."""
-    return await asyncio.to_thread(score_batch_sync, patents, client=client, model=model)

@@ -5,15 +5,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)
-![Tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen)
 
 There are **4.2M+ expired US utility patents** sitting in the public domain. Each one is essentially a free manufacturing manual — dimensions, tolerances, materials, assembly — written when someone thought it was worth $15,000 in legal fees to protect. Nobody re-reads them. Patent Hunter does.
 
-Every week, it pulls the latest grants, filters by category, and asks **Anthropic Sonnet** and **OpenAI Codex** — independently — whether the underlying invention is commercially viable today. Only the rows where both judges agree are surfaced.
+Every week, it pulls the latest grants, filters by category, and asks **Claude (via local CLI / Max subscription)** and **OpenAI Codex** — independently — whether the underlying invention is commercially viable today. Only the rows where both judges agree are surfaced.
 
 ## Features
 
-- **Dual independent scoring** with two LLMs from different providers. Codex never sees Sonnet's score (Clean Context for Verifier).
+- **Dual independent scoring** with Claude (via local CLI / Max subscription) and Codex. Codex never sees Claude's score (Clean Context for Verifier).
 - **~90% deterministic / ~10% LLM.** Fetch, filter, formatting and IO are plain Python; the LLM is only asked for the commercial-viability judgement.
 - **Continuous evaluation harness** with a golden dataset and four metrics (agreement, in-range, status-match, sigma).
 - **LangGraph orchestration** with `MemorySaver` checkpoint and parallel fan-out of the two scorers.
@@ -35,11 +35,37 @@ open out/2026-W19/report.html
 
 That's the full loop. The dry run uses stubbed scorers, so no spend, no network.
 
+## Setup
+
+For live weekly runs, Patent Hunter fetches USPTO grants from Google Patents
+Public Datasets in BigQuery.
+
+1. Create or choose a GCP project with BigQuery billing/free-tier access.
+2. Enable the BigQuery API for that project.
+3. Authenticate local ADC:
+   ```bash
+   gcloud auth application-default login
+   ```
+4. Install and authenticate the local Claude Code CLI for the "Sonnet" judge:
+   ```bash
+   npm install -g @anthropic-ai/claude-code
+   # or: brew install anthropic/tap/claude-code
+   claude /login
+   ```
+   Patent Hunter uses your local Claude Code installation (`claude` CLI) for the
+   "Sonnet" judge. No API key is required.
+5. Copy `.env.example` to `.env`, then set:
+   ```bash
+   GOOGLE_CLOUD_PROJECT=<your-project-id>
+   ```
+6. Optional service-account fallback: set `GOOGLE_APPLICATION_CREDENTIALS` to
+   a JSON key path when ADC is not available.
+
 ## Usage
 
 ```bash
-# Set credentials for live scoring
-cp .env.example .env       # then edit: ANTHROPIC_API_KEY=sk-ant-...
+# Set credentials for live fetching + scoring
+cp .env.example .env       # then edit: GOOGLE_CLOUD_PROJECT; ensure `claude /login`
 
 # Score the previous ISO week
 python3 -m patent_hunter run
@@ -66,12 +92,13 @@ Sample CLI output:
 
 ```
 fetched=4 scored=4 adopted=3
-sonnet_input_tokens=1500 output_tokens=600 cost=$0.0135
+sonnet_input_tokens=1500 output_tokens=600 cli_reported_cost=$0.0135
 codex_invocations=1 cost_estimate=$0.30
 total_cost=$0.3135
 ```
 
-A real weekly run on ~100 candidates costs well under **$5**.
+A real weekly run consumes Claude Max quota through the local CLI and records
+the CLI-reported usage cost for visibility; no Claude API key billing is used.
 
 ### Edge API
 
@@ -104,8 +131,8 @@ graph TD;
 
 | Node | Responsibility |
 |---|---|
-| `fetch` | PatentsView REST query, then a deterministic "likely lapsed" filter. |
-| `score_sonnet` | Anthropic SDK, model `claude-sonnet-4-6`. |
+| `fetch` | Google Patents BigQuery query, CPC-prefix filter, then a deterministic "likely lapsed" grant-window approximation. |
+| `score_sonnet` | Launches `claude -p ... --output-format=json` as a subprocess from `/tmp`, matching the Codex subprocess pattern while avoiding project-context ingestion. |
 | `score_codex` | OpenAI Codex via subprocess. Does **not** see Sonnet's score. |
 | `verify` | Adopt only where `sonnet.score >= 7` **and** `codex.score >= 7`. |
 | `report` | Emit `report.html` + `scores.jsonl` + `run.log`. |
@@ -127,10 +154,11 @@ graph TD;
 
 | Topic | Choice | Why |
 |---|---|---|
-| Data source | PatentsView v1 REST API | XML bulk is heavy; BigQuery requires a GCP account. REST is the lowest-friction option. |
-| "Expired" approximation | `grant_date` ~12 years old + utility + small assignee | Maintenance-fee events aren't exposed by PatentsView v1. The LLM acts as the downstream precision filter; the deterministic rule is tuned for recall. |
+| Data source | Google Patents Public Datasets on BigQuery | PatentsView v1 REST was decommissioned; USPTO's successor ODP path is ID.me-gated. BigQuery keeps the weekly fetch public and scriptable through ADC. |
+| "Expired" approximation | `grant_date` ~12 years old + utility + small assignee | Maintenance-fee events aren't in the publication query path. The LLM acts as the downstream precision filter; the deterministic rule is tuned for recall. |
 | Adoption rule | Both models must score ≥ 7 | Cuts false positives. Codex is never shown Sonnet's score. |
 | Batch size | 50 patents, two models in parallel (`asyncio.gather`); batches are sequential | Amortises request overhead without tripping rate limits. |
+| Claude invocation | Local `claude` CLI subprocess with `cwd=/tmp` | Keeps Claude Code from ingesting repo instructions and memory files as prompt context. |
 | Prompt | Gipp-style six fields + JSON-only output | Smaller models behave better with the explicit JSON schema reminder. |
 
 </details>
@@ -152,8 +180,8 @@ PRs and issues welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, te
 ## Acknowledgements
 
 - **Gipp** ([@gippp69](https://x.com/gippp69)) for publicising the framing of expired patents as open-source manufacturing manuals.
-- **USPTO** and **PatentsView** for keeping the underlying dataset open.
-- **Anthropic**, **OpenAI**, **LangGraph**, and **Hono** for the SDKs and runtimes this is built on.
+- **USPTO** and **Google Patents Public Datasets** for keeping the underlying dataset open.
+- **Anthropic**, **OpenAI**, **LangGraph**, and **Hono** for the tools and runtimes this is built on.
 
 ## License
 

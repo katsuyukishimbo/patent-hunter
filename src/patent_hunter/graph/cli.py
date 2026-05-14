@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -89,9 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(args.verbose)
 
     week = parse_iso_week(args.week) if args.week else previous_iso_week()
-    if not args.dryrun and not os.environ.get("ANTHROPIC_API_KEY"):
+    claude_bin = os.environ.get("CLAUDE_BIN", "claude")
+    if not args.dryrun and shutil.which(claude_bin) is None:
         print(
-            "ERROR: ANTHROPIC_API_KEY is not set. Use --dryrun or configure .env.",
+            f"ERROR: Claude Code CLI binary not found: {claude_bin}. "
+            "Use --dryrun, install/login to Claude Code, or set CLAUDE_BIN.",
             file=sys.stderr,
         )
         return 1

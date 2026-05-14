@@ -61,7 +61,7 @@
         <td>{{ loop.index }}</td>
         <td>
           <a href="{{ sp.patent.google_patents_url }}" target="_blank" rel="noreferrer">
-            <code class="pid">US{{ sp.patent.patent_id }}</code>
+            <code class="pid">{% if sp.patent.patent_id.startswith("US") %}{{ sp.patent.patent_id }}{% else %}US{{ sp.patent.patent_id }}{% endif %}</code>
           </a>
           <div class="small-meta">{{ sp.patent.title }}</div>
           <div class="small-meta">granted {{ sp.patent.grant_date }} · CPC {{ sp.patent.cpc_code }}</div>

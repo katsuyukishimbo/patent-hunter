@@ -6,10 +6,10 @@ realistic-looking patents (modelled after the three Gipp ``Hit`` examples)
 and stubs both scorers so the full pipeline ends in real HTML + JSONL +
 log files that you can open in a browser.
 
-Why this exists: the production CLI needs ANTHROPIC_API_KEY plus internet
-access to PatentsView, neither of which is available in this sandbox.
-The dry-run lets us verify report rendering, JSONL serialisation, and
-the "both models score >= threshold" gate without spending a cent.
+Why this exists: the production CLI needs Google credentials, Claude CLI
+authentication, and internet access, none of which are required for this
+fixture path. The dry-run lets us verify report rendering, JSONL
+serialisation, and the "both models score >= threshold" gate locally.
 
 Run with:
 
@@ -20,13 +20,10 @@ Outputs land under ``out/<ISO-week>/``.
 
 from __future__ import annotations
 
-import asyncio
-import importlib
 import json
 import os
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 SP = ROOT / ".venv" / "lib" / "python3.12" / "site-packages"
@@ -37,7 +34,7 @@ os.chdir(ROOT)
 
 from patent_hunter.models import Patent  # noqa: E402
 from patent_hunter.runner import RunConfig, run  # noqa: E402
-from patent_hunter.week import IsoWeek, previous_iso_week  # noqa: E402
+from patent_hunter.week import previous_iso_week  # noqa: E402
 
 FIXTURE_PATENTS = [
     Patent(
@@ -118,33 +115,33 @@ def _extract_payload(text: str):
     return json.loads(text[idx + len(marker) :])
 
 
-class _FakeMessages:
-    def create(self, **kwargs):
-        user_text = kwargs["messages"][0]["content"]
-        ids = [obj["patent_id"] for obj in _extract_payload(user_text)]
-        items = []
-        for pid in ids:
-            score = STUB_SCORES.get(pid, (5, 5))[0]
-            items.append(
-                {
-                    "patent_id": pid,
-                    "plain_english": f"Sonnet plain-English summary for US{pid}.",
-                    "consumer_viable": score >= 6,
-                    "bom_estimate": "$1.60-2.10",
-                    "amazon_gap": score >= 7,
-                    "review_signal": "competing products fail in 2 weeks",
-                    "score": score,
-                }
-            )
-        return SimpleNamespace(
-            content=[SimpleNamespace(text=json.dumps(items))],
-            usage=SimpleNamespace(input_tokens=1500, output_tokens=600),
+async def _fake_sonnet_runner(argv, timeout):
+    prompt = argv[argv.index("-p") + 1]
+    ids = [obj["patent_id"] for obj in _extract_payload(prompt)]
+    items = []
+    for pid in ids:
+        score = STUB_SCORES.get(pid, (5, 5))[0]
+        items.append(
+            {
+                "patent_id": pid,
+                "plain_english": f"Sonnet plain-English summary for US{pid}.",
+                "consumer_viable": score >= 6,
+                "bom_estimate": "$1.60-2.10",
+                "amazon_gap": score >= 7,
+                "review_signal": "competing products fail in 2 weeks",
+                "score": score,
+            }
         )
-
-
-class _FakeAnthropic:
-    def __init__(self):
-        self.messages = _FakeMessages()
+    return json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": json.dumps(items),
+            "total_cost_usd": 0.0135,
+            "usage": {"input_tokens": 1500, "output_tokens": 600},
+        }
+    )
 
 
 async def _fake_codex_runner(argv, timeout):
@@ -176,7 +173,7 @@ def main():
         max_per_category=10,
         top_n=10,
         fetched_patents=FIXTURE_PATENTS,
-        sonnet_client=_FakeAnthropic(),
+        sonnet_client=_fake_sonnet_runner,
         codex_runner=_fake_codex_runner,
     )
     paths = run(cfg)

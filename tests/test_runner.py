@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
-from types import SimpleNamespace
-from typing import List
 
-from patent_hunter.runner import RunConfig, run, run_async
+from patent_hunter.runner import RunConfig, run
 from patent_hunter.week import IsoWeek
 
 from tests.conftest import make_patent
@@ -21,16 +18,18 @@ def _patent(pid: str, score_pair: tuple[int, int]):
     return p
 
 
-class _SonnetMessages:
-    def __init__(self, scores_by_id):
-        self.scores_by_id = scores_by_id
+def _extract_payload(text):
+    """Pull the JSON array out of the user-message string."""
+    marker = "PATENTS = "
+    idx = text.find(marker)
+    assert idx >= 0
+    return json.loads(text[idx + len(marker) :])
 
-    def create(self, **kwargs):
-        # Decode the user payload to learn which patents were asked.
-        user_text = kwargs["messages"][0]["content"]
-        ids = [
-            obj["patent_id"] for obj in _extract_payload(user_text)
-        ]
+
+def _build_sonnet_runner(scores_by_id):
+    async def runner(argv, timeout):
+        prompt = argv[argv.index("-p") + 1]
+        ids = [obj["patent_id"] for obj in _extract_payload(prompt)]
         out = [
             {
                 "patent_id": pid,
@@ -39,27 +38,21 @@ class _SonnetMessages:
                 "bom_estimate": "$1-2",
                 "amazon_gap": True,
                 "review_signal": "noise",
-                "score": self.scores_by_id[pid][0],
+                "score": scores_by_id[pid][0],
             }
             for pid in ids
         ]
-        return SimpleNamespace(
-            content=[SimpleNamespace(text=json.dumps(out))],
-            usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+        return json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "result": json.dumps(out),
+                "total_cost_usd": 0.01,
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }
         )
 
-
-class _SonnetClient:
-    def __init__(self, scores_by_id):
-        self.messages = _SonnetMessages(scores_by_id)
-
-
-def _extract_payload(text):
-    """Pull the JSON array out of the user-message string."""
-    marker = "PATENTS = "
-    idx = text.find(marker)
-    assert idx >= 0
-    return json.loads(text[idx + len(marker) :])
+    return runner
 
 
 def _build_codex_runner(scores_by_id):
@@ -100,7 +93,7 @@ def test_runner_adopts_only_when_both_models_pass(tmp_path: Path):
         out_dir=tmp_path,
         score_threshold=7,
         fetched_patents=patents,
-        sonnet_client=_SonnetClient(scores_by_id),
+        sonnet_client=_build_sonnet_runner(scores_by_id),
         codex_runner=_build_codex_runner(scores_by_id),
     )
     paths = run(cfg)
@@ -127,7 +120,7 @@ def test_runner_handles_zero_fetched(tmp_path: Path):
         week=week,
         out_dir=tmp_path,
         fetched_patents=[],
-        sonnet_client=_SonnetClient({}),
+        sonnet_client=_build_sonnet_runner({}),
         codex_runner=_build_codex_runner({}),
     )
     paths = run(cfg)
@@ -146,7 +139,7 @@ def test_runner_shows_shortlist_when_nothing_adopted(tmp_path: Path):
         out_dir=tmp_path,
         score_threshold=7,
         fetched_patents=patents,
-        sonnet_client=_SonnetClient(scores_by_id),
+        sonnet_client=_build_sonnet_runner(scores_by_id),
         codex_runner=_build_codex_runner(scores_by_id),
     )
     paths = run(cfg)

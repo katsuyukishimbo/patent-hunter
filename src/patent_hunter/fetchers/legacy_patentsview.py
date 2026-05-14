@@ -1,4 +1,15 @@
-"""Deterministic fetch + filter stage.
+"""Legacy PatentsView fetcher, kept only for historical reference.
+
+Rollback status
+---------------
+Do not restore this module to the production path. The old PatentsView REST
+endpoint at https://search.patentsview.org/api/v1/patent/ was decommissioned
+on 2025-05-01, and USPTO's successor Open Data Portal migration completed on
+2026-03-20 with an ID.me-gated API path that is not usable for this project.
+This code cannot be made reliable by retrying or adding an API key; rollback is
+therefore not a viable operational option.
+
+Original deterministic fetch + filter stage.
 
 Data source decision (P1)
 -------------------------

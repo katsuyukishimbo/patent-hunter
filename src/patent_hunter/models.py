@@ -21,7 +21,7 @@ class Patent:
     patent_id: str
     title: str
     abstract: str
-    grant_date: str  # YYYY-MM-DD as returned by PatentsView
+    grant_date: str  # Date string returned by the active fetcher
     filing_date: Optional[str]
     assignee_name: Optional[str]
     cpc_code: str
