@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Patent Hunter weekly launchd agent (macOS).
+
+  This file is a template. Replace {{PATENT_HUNTER_DIR}} with the absolute
+  path to your local patent-hunter repository before installing. See
+  README.md "Weekly cron (macOS launchd)" for the full install steps.
+
+  Schedule: every Monday at 09:00 local time.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.patenthunter.weekly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PATENT_HUNTER_DIR}}/scripts/run_weekly.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PATENT_HUNTER_DIR}}</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>{{PATENT_HUNTER_DIR}}/logs/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PATENT_HUNTER_DIR}}/logs/launchd.stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

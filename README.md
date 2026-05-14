@@ -75,6 +75,55 @@ To receive a weekly summary in Discord, create a webhook in your channel:
 Each weekly run posts the top adopted patents as a Discord Embed. Failures
 to notify do not affect the run itself (best-effort).
 
+### Weekly cron (macOS launchd)
+
+To have Patent Hunter run automatically every Monday at 09:00:
+
+1. Render the launchd plist template with your project path:
+
+   ```bash
+   PROJECT_DIR="$(pwd)"
+   sed "s|{{PATENT_HUNTER_DIR}}|$PROJECT_DIR|g" \
+     deploy/launchd/com.patenthunter.weekly.plist.template \
+     > ~/Library/LaunchAgents/com.patenthunter.weekly.plist
+   ```
+
+2. Load the agent:
+
+   ```bash
+   launchctl load ~/Library/LaunchAgents/com.patenthunter.weekly.plist
+   ```
+
+3. Verify it registered:
+
+   ```bash
+   launchctl list | grep patenthunter
+   ```
+
+Each run writes `logs/weekly-YYYY-Wnn.log` (one per ISO week). The wrapper
+script `scripts/run_weekly.sh` unsets any inherited
+`GOOGLE_APPLICATION_CREDENTIALS` (so a different workspace's service account
+does not get reused), loads `.env`, and invokes `python -m patent_hunter run`.
+
+To unload:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.patenthunter.weekly.plist
+```
+
+#### Linux / other Unix (cron)
+
+```cron
+0 9 * * 1 /path/to/patent-hunter/scripts/run_weekly.sh >/dev/null 2>&1
+```
+
+#### Headless server
+
+The `claude` CLI needs interactive `claude /login` to bind to a Claude Max
+subscription. On servers without a browser, switch the Sonnet scorer to the
+Anthropic Python SDK with an API key — see the docstring at the top of
+`src/patent_hunter/scorers/sonnet.py` for the swap point.
+
 ## Usage
 
 ```bash
