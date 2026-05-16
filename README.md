@@ -275,6 +275,22 @@ hallucinations and false-positive adoptions:
    `--min-confidence 70` to filter out adopted patents that the model
    itself is uncertain about.
 
+### Continuous prompt improvement (live eval)
+
+`scripts/dryrun.py` runs against deterministic stubs by default. To benchmark
+the actual scoring prompt against the golden dataset, run it through the
+real Claude CLI and Codex CLI:
+
+```bash
+python scripts/dryrun.py --live          # one fixture run through real CLIs
+python evals/run_eval_live.py            # 3 runs + Sierra metrics → evals/out/eval_live_<ts>/
+```
+
+The live eval consumes the Claude Max / ChatGPT Pro subscription quotas, not
+API credits. It's the entry point for autoresearch-style prompt improvement
+loops: edit `src/patent_hunter/scorers/prompts.py`, re-run the live eval,
+keep changes only when metrics improve.
+
 ## Roadmap
 
 Patent Hunter is built as a **self-improving system**, not a one-shot

@@ -352,7 +352,23 @@ def main():
         default=0,
         help="Minimum confidence_score required from both fixture scorers.",
     )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "Bypass fixture scorers and invoke the real Claude CLI + Codex CLI. "
+            "Consumes Claude Max / ChatGPT Pro subscription quotas."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.live:
+        print("[dryrun] mode: LIVE (real Claude CLI + Codex CLI)")
+        sonnet_client = None
+        codex_runner = None
+    else:
+        sonnet_client = _fake_sonnet_runner
+        codex_runner = _fake_codex_runner
 
     week = previous_iso_week()
     cfg = RunConfig(
@@ -362,8 +378,8 @@ def main():
         max_per_category=10,
         top_n=10,
         fetched_patents=FIXTURE_PATENTS,
-        sonnet_client=_fake_sonnet_runner,
-        codex_runner=_fake_codex_runner,
+        sonnet_client=sonnet_client,
+        codex_runner=codex_runner,
         diy_only=args.diy_only,
         min_confidence=args.min_confidence,
     )
