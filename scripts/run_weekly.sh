@@ -54,5 +54,9 @@ LOG_FILE="logs/weekly-$(date -u +%Y-W%V).log"
 "${PYTHON}" -m patent_hunter run "$@" >>"${LOG_FILE}" 2>&1
 EXIT_CODE=$?
 
+# Best-effort autonomous issue creation. Failures must NOT affect the run's exit code.
+"${PYTHON}" "${PROJECT_DIR}/scripts/auto_issue.py" >>"${LOG_FILE}" 2>&1 || true
+"${PYTHON}" "${PROJECT_DIR}/scripts/weekly_insights.py" >>"${LOG_FILE}" 2>&1 || true
+
 echo "[run_weekly] exit code ${EXIT_CODE} at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"${LOG_FILE}"
 exit "${EXIT_CODE}"

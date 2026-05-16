@@ -351,6 +351,35 @@ pipeline gets better without manual prompt tuning.
 | 5.2 | Etsy receive-on-demand integration for the DIY route. |
 | 5.3 | Auto STL generation + Printables / BOOTH publishing for sellable models. |
 
+### Autonomous issue + auto-triage
+
+Patent Hunter generates its own GitHub issues each week and triages new
+issues automatically. This is the first pillar of Phase 3 self-improvement.
+
+| Layer | Trigger | Tool | What it does |
+|---|---|---|---|
+| **Anomaly detection** | weekly cron tail | `scripts/auto_issue.py` | Threshold rules on events.jsonl (zero-adopted streak, scorer failures, cost spike, eval regression) |
+| **Weekly insights** | weekly cron tail | `scripts/weekly_insights.py` | Claude CLI summarises 4 weeks of events into 3 improvement hypotheses |
+| **Auto-triage** | issue `opened` (any `auto-issue` label) | `.github/workflows/auto-triage.yml` | Anthropic API drafts a triage comment: similar past issues, related ADR / code paths, priority estimate |
+
+Setup:
+
+```bash
+gh auth login                              # required for issue creation
+gh secret set ANTHROPIC_API_KEY            # required for auto-triage workflow
+```
+
+Local dry-run:
+
+```bash
+python scripts/auto_issue.py --dry-run
+python scripts/weekly_insights.py --dry-run
+```
+
+Both scripts are best-effort: failures do not affect the weekly run's exit
+code or trigger alerts. The auto-triage workflow uses `continue-on-error`
+for the same reason.
+
 <details>
 <summary><strong>Key design choices</strong></summary>
 
